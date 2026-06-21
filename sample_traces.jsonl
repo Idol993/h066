@@ -1,0 +1,6 @@
+{"trace_id": "abc123", "span_id": "span1", "parent_span_id": null, "service_name": "frontend", "operation_name": "render_page", "timestamp": 1718880000000, "duration_ms": 500, "error": false}
+{"trace_id": "abc123", "span_id": "span2", "parent_span_id": "span1", "service_name": "api-server", "operation_name": "handle_request", "timestamp": 1718880000100, "duration_ms": 300, "error": false}
+{"trace_id": "abc123", "span_id": "span3", "parent_span_id": "span2", "service_name": "database", "operation_name": "query_data", "timestamp": 1718880000150, "duration_ms": 150, "error": false, "status_code": "200"}
+{"trace_id": "abc123", "span_id": "span4", "parent_span_id": "span2", "service_name": "cache", "operation_name": "get_cache", "timestamp": 1718880000120, "duration_ms": 50, "error": false}
+{"trace_id": "def456", "span_id": "span5", "parent_span_id": null, "service_name": "frontend", "operation_name": "submit_form", "timestamp": 1718880100000, "duration_ms": 800, "error": true, "status_code": "500"}
+{"trace_id": "def456", "span_id": "span6", "parent_span_id": "span5", "service_name": "api-server", "operation_name": "process_form", "timestamp": 1718880100200, "duration_ms": 500, "error": true, "status_code": "500"}

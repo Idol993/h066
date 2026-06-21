@@ -1,0 +1,156 @@
+[
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6124",
+    "id": "463ac35c9f6413ad",
+    "name": "get_user_info",
+    "timestamp": 1718880000000000,
+    "duration": 1250000,
+    "localEndpoint": {
+      "serviceName": "api-gateway",
+      "ipv4": "10.0.0.1"
+    },
+    "tags": {
+      "http.method": "GET",
+      "http.path": "/api/users/123",
+      "http.status_code": "200"
+    }
+  },
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6124",
+    "id": "a1b2c3d4e5f6a7b8",
+    "parentId": "463ac35c9f6413ad",
+    "name": "validate_token",
+    "timestamp": 1718880000050000,
+    "duration": 80000,
+    "localEndpoint": {
+      "serviceName": "auth-service",
+      "ipv4": "10.0.0.2"
+    },
+    "tags": {
+      "http.status_code": "200"
+    }
+  },
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6124",
+    "id": "b2c3d4e5f6a7b8c9",
+    "parentId": "463ac35c9f6413ad",
+    "name": "query_user_db",
+    "timestamp": 1718880000150000,
+    "duration": 450000,
+    "localEndpoint": {
+      "serviceName": "user-service",
+      "ipv4": "10.0.0.3"
+    },
+    "tags": {
+      "db.system": "postgresql",
+      "db.statement": "SELECT * FROM users WHERE id = 123"
+    }
+  },
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6124",
+    "id": "c3d4e5f6a7b8c9d0",
+    "parentId": "b2c3d4e5f6a7b8c9",
+    "name": "get_user_permissions",
+    "timestamp": 1718880000300000,
+    "duration": 600000,
+    "localEndpoint": {
+      "serviceName": "permission-service",
+      "ipv4": "10.0.0.4"
+    },
+    "tags": {
+      "error": "true",
+      "http.status_code": "500"
+    }
+  },
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6124",
+    "id": "d4e5f6a7b8c9d0e1",
+    "parentId": "463ac35c9f6413ad",
+    "name": "cache_lookup",
+    "timestamp": 1718880000100000,
+    "duration": 20000,
+    "localEndpoint": {
+      "serviceName": "user-service",
+      "ipv4": "10.0.0.3"
+    },
+    "tags": {
+      "cache.hit": "false"
+    }
+  },
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6125",
+    "id": "463ac35c9f6413ae",
+    "name": "create_order",
+    "timestamp": 1718880010000000,
+    "duration": 2100000,
+    "localEndpoint": {
+      "serviceName": "order-service",
+      "ipv4": "10.0.0.5"
+    },
+    "tags": {
+      "http.method": "POST",
+      "http.status_code": "500",
+      "error": "true"
+    }
+  },
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6125",
+    "id": "e5f6a7b8c9d0e1f2",
+    "parentId": "463ac35c9f6413ae",
+    "name": "validate_inventory",
+    "timestamp": 1718880010200000,
+    "duration": 800000,
+    "localEndpoint": {
+      "serviceName": "inventory-service",
+      "ipv4": "10.0.0.6"
+    },
+    "tags": {
+      "http.status_code": "200"
+    }
+  },
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6125",
+    "id": "f6a7b8c9d0e1f2a3",
+    "parentId": "463ac35c9f6413ae",
+    "name": "charge_payment",
+    "timestamp": 1718880011100000,
+    "duration": 950000,
+    "localEndpoint": {
+      "serviceName": "payment-service",
+      "ipv4": "10.0.0.7"
+    },
+    "tags": {
+      "http.status_code": "503",
+      "error": "true"
+    }
+  },
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6126",
+    "id": "1a2b3c4d5e6f7a8b",
+    "name": "list_products",
+    "timestamp": 1718880020000000,
+    "duration": 150000,
+    "localEndpoint": {
+      "serviceName": "product-service",
+      "ipv4": "10.0.0.8"
+    },
+    "tags": {
+      "http.status_code": "200"
+    }
+  },
+  {
+    "traceId": "463ac35c9f6413ad48485a3953bb6126",
+    "id": "2b3c4d5e6f7a8b9c",
+    "parentId": "1a2b3c4d5e6f7a8b",
+    "name": "query_products_db",
+    "timestamp": 1718880020020000,
+    "duration": 100000,
+    "localEndpoint": {
+      "serviceName": "product-service",
+      "ipv4": "10.0.0.8"
+    },
+    "tags": {
+      "db.system": "mysql"
+    }
+  }
+]
