@@ -85,6 +85,7 @@ class HTMLExporter:
             td = trace_data[tid]
             trace_json_data[tid] = {
                 "critical_duration_ms": td.get("critical_duration_ms", 0),
+                "total_duration_ms": td.get("total_duration_ms", 0),
                 "critical_path": td.get("critical_path", []),
                 "span_count": td.get("span_count", 0),
                 "error_count": td.get("error_count", 0),
@@ -154,11 +155,12 @@ class HTMLExporter:
         trace_selector_options = ""
         for i, tid in enumerate(sorted_trace_ids):
             td = trace_data[tid]
-            dur = td.get("critical_duration_ms", 0)
+            total_dur = td.get("total_duration_ms", 0)
+            cp_dur = td.get("critical_duration_ms", 0)
             sc = td.get("span_count", 0)
             display_tid = tid if len(tid) <= 16 else tid[:16] + "..."
             safe_tid = _safe_id(tid)
-            label = f"{_e(display_tid)} ({dur:.0f}ms, {sc} spans)"
+            label = f"{_e(display_tid)} ({total_dur:.0f}ms total, {cp_dur:.0f}ms CP, {sc} spans)"
             selected = " selected" if i == 0 else ""
             trace_selector_options += f'<option value="{safe_tid}"{selected}>{label}</option>\n'
         topology_node_data = topology_data.get("node_data", {}) if topology_data else {}
@@ -177,11 +179,12 @@ class HTMLExporter:
         compare_select_b = ""
         for i, tid in enumerate(sorted_trace_ids):
             td = trace_data[tid]
-            dur = td.get("critical_duration_ms", 0)
+            total_dur = td.get("total_duration_ms", 0)
+            cp_dur = td.get("critical_duration_ms", 0)
             sc = td.get("span_count", 0)
             display_tid = tid if len(tid) <= 16 else tid[:16] + "..."
             safe_tid = _safe_id(tid)
-            label = f"{_e(display_tid)} ({dur:.0f}ms, {sc} spans)"
+            label = f"{_e(display_tid)} ({total_dur:.0f}ms total, {cp_dur:.0f}ms CP, {sc} spans)"
             selected = " selected" if i == 1 else ""
             compare_select_b += f'<option value="{safe_tid}"{selected}>{label}</option>\n'
         css = self._render_css()
@@ -377,153 +380,184 @@ tr:hover { background: #f8f9fa; }
         topology_node_json: str,
         topology_edge_json: str,
     ) -> str:
-        return f"""<script>
-var traceData = {trace_json_str};
-var sortedTraceIds = {sorted_trace_ids_json};
-var safeToOrig = {safe_to_orig_str};
-var origToSafe = {{}};
-for (var origId in safeToOrig) {{
+        return r"""<script>
+var traceData = """ + trace_json_str + r""";
+var sortedTraceIds = """ + sorted_trace_ids_json + r""";
+var safeToOrig = """ + safe_to_orig_str + r""";
+var origToSafe = {};
+for (var origId in safeToOrig) {
     var safeId = origId;
     var realOrig = safeToOrig[origId];
     origToSafe[realOrig] = safeId;
-}}
-var topologyNodeData = {topology_node_json};
-var topologyEdgeData = {topology_edge_json};
+}
+var topologyNodeData = """ + topology_node_json + r""";
+var topologyEdgeData = """ + topology_edge_json + r""";
 
-function switchMainTab(evt, tabName) {{
+function switchMainTab(evt, tabName) {
     var tabcontent = document.getElementsByClassName("tab-content");
-    for (var i = 0; i < tabcontent.length; i++) {{
+    for (var i = 0; i < tabcontent.length; i++) {
         tabcontent[i].className = tabcontent[i].className.replace(" active", "");
-    }}
+    }
     var tablinks = document.getElementsByClassName("tab");
-    for (var i = 0; i < tablinks.length; i++) {{
+    for (var i = 0; i < tablinks.length; i++) {
         tablinks[i].className = tablinks[i].className.replace(" active", "");
-    }}
+    }
     document.getElementById(tabName).className += " active";
     evt.currentTarget.className += " active";
-    if (tabName === 'topology') {{
+    if (tabName === 'topology') {
         setupTopologyClick();
-    }} else if (tabName === 'compare') {{
+    } else if (tabName === 'compare') {
         updateComparison();
-    }}
-}}
+    }
+}
 
-function switchTrace(safeId) {{
+function switchTrace(safeId) {
     var panels = document.querySelectorAll('.trace-panel');
-    panels.forEach(function(p) {{ p.style.display = 'none'; }});
+    panels.forEach(function(p) { p.style.display = 'none'; });
     var target = document.getElementById('panel-' + safeId);
-    if (target) {{
+    if (target) {
         target.style.display = 'block';
-    }}
+    }
     var meta = traceData[safeId];
     var metaEl = document.getElementById('trace-meta');
-    if (meta && metaEl) {{
+    if (meta && metaEl) {
         var origId = safeToOrig[safeId] || safeId;
-        metaEl.textContent = 'Trace: ' + origId + ' | Critical path: ' + meta.critical_duration_ms.toFixed(1) +
+        metaEl.textContent = 'Trace: ' + origId +
+            ' | Total: ' + (meta.total_duration_ms || 0).toFixed(1) + ' ms' +
+            ' | Critical path: ' + (meta.critical_duration_ms || 0).toFixed(1) +
             ' ms | Spans: ' + meta.span_count;
-    }}
-}}
+    }
+}
 
-function jumpToTrace(origTraceId) {{
+function jumpToTrace(origTraceId) {
     var safeId = origToSafe[origTraceId];
-    if (!safeId) {{
-        safeId = origTraceId.replace(/[^a-zA-Z0-9_-]/g, '_');
-    }}
+    if (!safeId) {
+        safeId = String(origTraceId).replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
     var perTraceTab = document.querySelectorAll('.tab')[0];
-    if (perTraceTab) {{
+    if (perTraceTab) {
         perTraceTab.click();
-    }}
+    }
     var select = document.getElementById('trace-select');
-    if (select) {{
+    if (select) {
         select.value = safeId;
         switchTrace(safeId);
-    }}
-}}
+    }
+}
 
-function updateComparison() {{
+document.addEventListener('click', function(e) {
+    var target = e.target;
+    if (target && target.classList && target.classList.contains('trace-link')) {
+        var tid = target.getAttribute('data-trace-id');
+        if (tid !== null && tid !== undefined) {
+            jumpToTrace(tid);
+        }
+    }
+});
+
+function updateComparison() {
     var safeA = document.getElementById('compare-a').value;
     var safeB = document.getElementById('compare-b').value;
     var a = traceData[safeA];
     var b = traceData[safeB];
-    if (!a || !b) {{
+    if (!a || !b) {
         document.getElementById('compare-results').innerHTML =
             '<div class="summary-card"><p class="hint-text">Please select two valid traces to compare.</p></div>';
         return;
-    }}
+    }
     var origA = safeToOrig[safeA] || safeA;
     var origB = safeToOrig[safeB] || safeB;
-    var durA = a.critical_duration_ms;
-    var durB = b.critical_duration_ms;
-    var durDelta = durB - durA;
-    var durDeltaPct = durA > 0 ? (durDelta / durA) * 100 : 0;
-    var durDeltaClass = durDelta > 0 ? 'delta-up' : (durDelta < 0 ? 'delta-down' : '');
-    var durDeltaSign = durDelta > 0 ? '+' : '';
+
+    var totalA = a.total_duration_ms || 0;
+    var totalB = b.total_duration_ms || 0;
+    var cpA = a.critical_duration_ms || 0;
+    var cpB = b.critical_duration_ms || 0;
+
+    var totalDelta = totalB - totalA;
+    var totalDeltaPct = totalA > 0 ? (totalDelta / totalA) * 100 : 0;
+    var totalDeltaClass = totalDelta > 0 ? 'delta-up' : (totalDelta < 0 ? 'delta-down' : '');
+    var totalDeltaSign = totalDelta > 0 ? '+' : '';
+
+    var cpDelta = cpB - cpA;
+    var cpDeltaPct = cpA > 0 ? (cpDelta / cpA) * 100 : 0;
+    var cpDeltaClass = cpDelta > 0 ? 'delta-up' : (cpDelta < 0 ? 'delta-down' : '');
+    var cpDeltaSign = cpDelta > 0 ? '+' : '';
+
     var errA = a.error_count || 0;
     var errB = b.error_count || 0;
     var errDelta = errB - errA;
     var errDeltaClass = errDelta > 0 ? 'delta-up' : (errDelta < 0 ? 'delta-down' : '');
     var errDeltaSign = errDelta > 0 ? '+' : '';
-    var sbA = a.service_breakdown || {{}};
-    var sbB = b.service_breakdown || {{}};
+
+    var sbA = a.service_breakdown || {};
+    var sbB = b.service_breakdown || {};
     var allServices = new Set(Object.keys(sbA).concat(Object.keys(sbB)));
     var diffRows = '';
-    allServices.forEach(function(svc) {{
+    allServices.forEach(function(svc) {
         var aDur = sbA[svc] || 0;
         var bDur = sbB[svc] || 0;
+        var aPct = totalA > 0 ? (aDur / totalA) * 100 : 0;
+        var bPct = totalB > 0 ? (bDur / totalB) * 100 : 0;
         var diff = bDur - aDur;
+        var pctDiff = bPct - aPct;
         var rowClass = '';
-        if (Math.abs(diff) > 50) {{
+        if (Math.abs(diff) > 50) {
             rowClass = diff > 0 ? 'diff-highlight' : 'diff-remove';
-        }}
+        }
         var diffSign = diff > 0 ? '+' : '';
+        var pctDiffSign = pctDiff > 0 ? '+' : '';
+        var pctDiffClass = pctDiff > 0 ? 'delta-up' : (pctDiff < 0 ? 'delta-down' : '');
         diffRows += '<tr class="' + rowClass + '">' +
             '<td>' + escapeHtml(svc) + '</td>' +
-            '<td>' + aDur.toFixed(2) + ' ms</td>' +
-            '<td>' + bDur.toFixed(2) + ' ms</td>' +
+            '<td>' + aDur.toFixed(2) + ' ms<br><span style="color:#666;font-size:12px;">' + aPct.toFixed(1) + '%</span></td>' +
+            '<td>' + bDur.toFixed(2) + ' ms<br><span style="color:#666;font-size:12px;">' + bPct.toFixed(1) + '%</span></td>' +
             '<td class="' + (diff > 0 ? 'delta-up' : (diff < 0 ? 'delta-down' : '')) + '">' +
-            diffSign + diff.toFixed(2) + ' ms</td>' +
+            diffSign + diff.toFixed(2) + ' ms<br><span class="' + pctDiffClass + '" style="font-size:12px;">' +
+            pctDiffSign + pctDiff.toFixed(1) + '%</span></td>' +
             '</tr>';
-    }});
-    var cpA = a.critical_path || [];
-    var cpB = b.critical_path || [];
-    var cpARows = renderCriticalPathTable(cpA, durA);
-    var cpBRows = renderCriticalPathTable(cpB, durB);
-    var diffOps = findDiffOperations(cpA, cpB);
+    });
+
+    var cpPathA = a.critical_path || [];
+    var cpPathB = b.critical_path || [];
+    var cpARows = renderCriticalPathTable(cpPathA, cpA);
+    var cpBRows = renderCriticalPathTable(cpPathB, cpB);
+    var diffOps = findDiffOperations(cpPathA, cpPathB);
     var diffOpsHtml = '';
-    if (diffOps.added.length > 0 || diffOps.removed.length > 0 || diffOps.slower.length > 0) {{
+    if (diffOps.added.length > 0 || diffOps.removed.length > 0 || diffOps.slower.length > 0) {
         diffOpsHtml = '<div class="summary-card"><h3>Key Differences</h3>';
-        if (diffOps.slower.length > 0) {{
+        if (diffOps.slower.length > 0) {
             diffOpsHtml += '<h4>Slower in B:</h4><ul>';
-            diffOps.slower.forEach(function(op) {{
+            diffOps.slower.forEach(function(op) {
                 diffOpsHtml += '<li><b>' + escapeHtml(op.service) + '</b> / ' + escapeHtml(op.operation) +
-                    ': ' + op.durA.toFixed(2) + ' → ' + op.durB.toFixed(2) + ' ms ' +
+                    ': ' + op.durA.toFixed(2) + ' \u2192 ' + op.durB.toFixed(2) + ' ms ' +
                     '<span class="delta-up">(+' + (op.durB - op.durA).toFixed(2) + ' ms)</span></li>';
-            }});
+            });
             diffOpsHtml += '</ul>';
-        }}
-        if (diffOps.added.length > 0) {{
+        }
+        if (diffOps.added.length > 0) {
             diffOpsHtml += '<h4>Only in B:</h4><ul>';
-            diffOps.added.forEach(function(op) {{
+            diffOps.added.forEach(function(op) {
                 diffOpsHtml += '<li class="diff-add"><b>' + escapeHtml(op.service) + '</b> / ' + escapeHtml(op.operation) +
                     ': ' + op.durB.toFixed(2) + ' ms</li>';
-            }});
+            });
             diffOpsHtml += '</ul>';
-        }}
-        if (diffOps.removed.length > 0) {{
+        }
+        if (diffOps.removed.length > 0) {
             diffOpsHtml += '<h4>Only in A:</h4><ul>';
-            diffOps.removed.forEach(function(op) {{
+            diffOps.removed.forEach(function(op) {
                 diffOpsHtml += '<li class="diff-remove"><b>' + escapeHtml(op.service) + '</b> / ' + escapeHtml(op.operation) +
                     ': ' + op.durA.toFixed(2) + ' ms</li>';
-            }});
+            });
             diffOpsHtml += '</ul>';
-        }}
+        }
         diffOpsHtml += '</div>';
-    }}
+    }
     var html = '<div class="compare-grid">' +
         '<div class="compare-col a">' +
         '<h3>Trace A: ' + escapeHtml(origA) + '</h3>' +
         '<div class="compare-metrics">' +
-        '<div class="metric-box"><div class="label">Critical Path</div><div class="value">' + durA.toFixed(2) + ' ms</div></div>' +
+        '<div class="metric-box"><div class="label">Total Duration</div><div class="value">' + totalA.toFixed(2) + ' ms</div></div>' +
+        '<div class="metric-box"><div class="label">Critical Path</div><div class="value">' + cpA.toFixed(2) + ' ms</div></div>' +
         '<div class="metric-box"><div class="label">Spans</div><div class="value">' + a.span_count + '</div></div>' +
         '<div class="metric-box"><div class="label">Errors</div><div class="value">' + errA + '</div></div>' +
         '<div class="metric-box"><div class="label">Services</div><div class="value">' + Object.keys(sbA).length + '</div></div>' +
@@ -534,7 +568,8 @@ function updateComparison() {{
         '<div class="compare-col b">' +
         '<h3>Trace B: ' + escapeHtml(origB) + '</h3>' +
         '<div class="compare-metrics">' +
-        '<div class="metric-box"><div class="label">Critical Path</div><div class="value">' + durB.toFixed(2) + ' ms <span class="' + durDeltaClass + '">(' + durDeltaSign + durDelta.toFixed(2) + ' ms, ' + durDeltaSign + durDeltaPct.toFixed(1) + '%)</span></div></div>' +
+        '<div class="metric-box"><div class="label">Total Duration</div><div class="value">' + totalB.toFixed(2) + ' ms <span class="' + totalDeltaClass + '">(' + totalDeltaSign + totalDelta.toFixed(2) + ' ms, ' + totalDeltaSign + totalDeltaPct.toFixed(1) + '%)</span></div></div>' +
+        '<div class="metric-box"><div class="label">Critical Path</div><div class="value">' + cpB.toFixed(2) + ' ms <span class="' + cpDeltaClass + '">(' + cpDeltaSign + cpDelta.toFixed(2) + ' ms, ' + cpDeltaSign + cpDeltaPct.toFixed(1) + '%)</span></div></div>' +
         '<div class="metric-box"><div class="label">Spans</div><div class="value">' + b.span_count + '</div></div>' +
         '<div class="metric-box"><div class="label">Errors</div><div class="value">' + errB + ' <span class="' + errDeltaClass + '">(' + errDeltaSign + errDelta + ')</span></div></div>' +
         '<div class="metric-box"><div class="label">Services</div><div class="value">' + Object.keys(sbB).length + '</div></div>' +
@@ -546,19 +581,19 @@ function updateComparison() {{
         diffOpsHtml +
         '<div class="summary-card">' +
         '<h3>Service Duration Breakdown</h3>' +
-        '<table><tr><th>Service</th><th>Trace A (ms)</th><th>Trace B (ms)</th><th>Difference</th></tr>' + diffRows + '</table>' +
+        '<table><tr><th>Service</th><th>Trace A</th><th>Trace B</th><th>Difference</th></tr>' + diffRows + '</table>' +
         '</div>';
     document.getElementById('compare-results').innerHTML = html;
-}}
+}
 
-function renderCriticalPathTable(cp, totalDur) {{
+function renderCriticalPathTable(cp, totalDur) {
     var rows = '';
-    for (var i = 0; i < cp.length; i++) {{
+    for (var i = 0; i < cp.length; i++) {
         var s = cp[i];
         var pct = s.pct_of_critical_path;
-        if (pct === undefined || pct === null) {{
+        if (pct === undefined || pct === null) {
             pct = totalDur > 0 ? (s.duration_ms / totalDur) * 100 : 0;
-        }}
+        }
         rows += '<tr>' +
             '<td>' + (i + 1) + '</td>' +
             '<td>' + escapeHtml(s.service_name || '-') + '</td>' +
@@ -566,136 +601,137 @@ function renderCriticalPathTable(cp, totalDur) {{
             '<td>' + s.duration_ms.toFixed(2) + '</td>' +
             '<td>' + pct.toFixed(1) + '%</td>' +
             '</tr>';
-    }}
+    }
     return rows;
-}}
+}
 
-function findDiffOperations(cpA, cpB) {{
-    var result = {{ added: [], removed: [], slower: [] }};
-    var aKeys = {{}};
-    cpA.forEach(function(s) {{
+function findDiffOperations(cpA, cpB) {
+    var result = { added: [], removed: [], slower: [] };
+    var aKeys = {};
+    cpA.forEach(function(s) {
         var key = (s.service_name || '') + '::' + (s.operation_name || '');
         aKeys[key] = s;
-    }});
-    cpB.forEach(function(s) {{
+    });
+    cpB.forEach(function(s) {
         var key = (s.service_name || '') + '::' + (s.operation_name || '');
-        if (aKeys[key]) {{
+        if (aKeys[key]) {
             var diff = s.duration_ms - aKeys[key].duration_ms;
-            if (diff > 50) {{
-                result.slower.push({{
+            if (diff > 50) {
+                result.slower.push({
                     service: s.service_name,
                     operation: s.operation_name,
                     durA: aKeys[key].duration_ms,
                     durB: s.duration_ms,
-                }});
-            }}
+                });
+            }
             delete aKeys[key];
-        }} else {{
-            result.added.push({{
+        } else {
+            result.added.push({
                 service: s.service_name,
                 operation: s.operation_name,
                 durB: s.duration_ms,
-            }});
-        }}
-    }});
-    for (var key in aKeys) {{
-        result.removed.push({{
+            });
+        }
+    });
+    for (var key in aKeys) {
+        result.removed.push({
             service: aKeys[key].service_name,
             operation: aKeys[key].operation_name,
             durA: aKeys[key].duration_ms,
-        }});
-    }}
+        });
+    }
     return result;
-}}
+}
 
-function setupTopologyClick() {{
+function setupTopologyClick() {
     var chart = document.getElementById('topology-chart');
     if (!chart || chart._topologySetup) return;
     chart._topologySetup = true;
-    chart.on('plotly_click', function(data) {{
+    chart.on('plotly_click', function(data) {
         if (!data.points || data.points.length === 0) return;
         var pt = data.points[0];
         var text = pt.text;
         if (!text) return;
         var detailsEl = document.getElementById('topology-details');
         if (!detailsEl) return;
-        if (pt.curveNumber === 2) {{
+        if (pt.curveNumber === 2) {
             var svc = text;
             showTopologyNodeDetails(svc, detailsEl);
-        }} else if (pt.curveNumber === 1) {{
+        } else if (pt.curveNumber === 1) {
             var ht = pt.hovertext || '';
-            var m = ht.match(/<b>([^<]+) → ([^<]+)<\\/b>/);
-            if (m) {{
+            var m = ht.match(/<b>([^<]+) \u2192 ([^<]+)<\/b>/);
+            if (m) {
                 showTopologyEdgeDetails(m[1], m[2], detailsEl);
-            }}
-        }}
-    }});
-}}
+            }
+        }
+    });
+}
 
-function showTopologyNodeDetails(serviceName, el) {{
+function renderTraceLinks(traceIds) {
+    var links = '';
+    (traceIds || []).slice(0, 10).forEach(function(tid) {
+        links += '<span class="trace-link" data-trace-id="' + escapeAttr(tid) + '">' + escapeHtml(tid) + '</span>, ';
+    });
+    if (links) links = links.slice(0, -2);
+    return links;
+}
+
+function showTopologyNodeDetails(serviceName, el) {
     var data = topologyNodeData[serviceName];
-    if (!data) {{
+    if (!data) {
         el.innerHTML = '<p>No data for service: ' + escapeHtml(serviceName) + '</p>';
         return;
-    }}
-    var traceLinks = '';
-    (data.traces || []).slice(0, 10).forEach(function(tid) {{
-        traceLinks += '<span class="trace-link" onclick="jumpToTrace(\\'' + tid.replace(/'/g, \\\\\\\\\\\\\\'') + '\\')">' + escapeHtml(tid) + '</span>, ';
-    }});
-    if (traceLinks) traceLinks = traceLinks.slice(0, -2);
+    }
+    var traceLinks = renderTraceLinks(data.traces || []);
     var slowRows = '';
-    (data.slow_operations || []).slice(0, 10).forEach(function(op, i) {{
+    (data.slow_operations || []).slice(0, 10).forEach(function(op, i) {
         var errClass = op.error ? 'error-high' : '';
         slowRows += '<tr>' +
             '<td>' + (i + 1) + '</td>' +
             '<td>' + escapeHtml(op.operation_name || '-') + '</td>' +
             '<td>' + op.duration_ms.toFixed(2) + ' ms</td>' +
             '<td class="' + errClass + '">' + (op.error ? 'Yes' : 'No') + '</td>' +
-            '<td><span class="trace-link" onclick="jumpToTrace(\\'' + op.trace_id.replace(/'/g, \\\\\\\\\\\\\\'') + '\\')">' + escapeHtml(op.trace_id) + '</span></td>' +
+            '<td><span class="trace-link" data-trace-id="' + escapeAttr(op.trace_id) + '">' + escapeHtml(op.trace_id) + '</span></td>' +
             '</tr>';
-    }});
+    });
     var html = '<h4>Service: ' + escapeHtml(serviceName) + '</h4>' +
         '<p><b>Related traces (' + (data.trace_count || 0) + '):</b> ' + traceLinks + '</p>';
-    if (slowRows) {{
+    if (slowRows) {
         html += '<h5>Slow Operations (Top 10, > 500ms):</h5>' +
             '<table><tr><th>#</th><th>Operation</th><th>Duration</th><th>Error</th><th>Trace</th></tr>' + slowRows + '</table>';
-    }}
+    }
     el.innerHTML = html;
-}}
+}
 
-function showTopologyEdgeDetails(src, tgt, el) {{
-    var key = src + ' → ' + tgt;
+function showTopologyEdgeDetails(src, tgt, el) {
+    var key = src + ' \u2192 ' + tgt;
     var data = topologyEdgeData[key];
-    if (!data) {{
-        el.innerHTML = '<p>No data for edge: ' + escapeHtml(src) + ' → ' + escapeHtml(tgt) + '</p>';
+    if (!data) {
+        el.innerHTML = '<p>No data for edge: ' + escapeHtml(src) + ' \u2192 ' + escapeHtml(tgt) + '</p>';
         return;
-    }}
-    var traceLinks = '';
-    (data.traces || []).slice(0, 10).forEach(function(tid) {{
-        traceLinks += '<span class="trace-link" onclick="jumpToTrace(\\'' + tid.replace(/'/g, \\\\\\\\\\\\\\'') + '\\')">' + escapeHtml(tid) + '</span>, ';
-    }});
-    if (traceLinks) traceLinks = traceLinks.slice(0, -2);
+    }
+    var traceLinks = renderTraceLinks(data.traces || []);
     var slowRows = '';
-    (data.slow_operations || []).slice(0, 10).forEach(function(op, i) {{
+    (data.slow_operations || []).slice(0, 10).forEach(function(op, i) {
         var errClass = op.error ? 'error-high' : '';
         slowRows += '<tr>' +
             '<td>' + (i + 1) + '</td>' +
             '<td>' + escapeHtml(op.operation_name || '-') + '</td>' +
             '<td>' + op.duration_ms.toFixed(2) + ' ms</td>' +
             '<td class="' + errClass + '">' + (op.error ? 'Yes' : 'No') + '</td>' +
-            '<td><span class="trace-link" onclick="jumpToTrace(\\'' + op.trace_id.replace(/'/g, \\\\\\\\\\\\\\'') + '\\')">' + escapeHtml(op.trace_id) + '</span></td>' +
+            '<td><span class="trace-link" data-trace-id="' + escapeAttr(op.trace_id) + '">' + escapeHtml(op.trace_id) + '</span></td>' +
             '</tr>';
-    }});
-    var html = '<h4>Call Edge: ' + escapeHtml(src) + ' → ' + escapeHtml(tgt) + '</h4>' +
+    });
+    var html = '<h4>Call Edge: ' + escapeHtml(src) + ' \u2192 ' + escapeHtml(tgt) + '</h4>' +
         '<p><b>Related traces (' + (data.trace_count || 0) + '):</b> ' + traceLinks + '</p>';
-    if (slowRows) {{
+    if (slowRows) {
         html += '<h5>Slow Operations (Top 10, > 500ms):</h5>' +
             '<table><tr><th>#</th><th>Operation</th><th>Duration</th><th>Error</th><th>Trace</th></tr>' + slowRows + '</table>';
-    }}
+    }
     el.innerHTML = html;
-}}
+}
 
-function escapeHtml(s) {{
+function escapeHtml(s) {
     if (s === null || s === undefined) return '';
     return String(s)
         .replace(/&/g, '&amp;')
@@ -703,16 +739,24 @@ function escapeHtml(s) {{
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
-}}
+}
 
-switchTrace(sortedTraceIds[0]);
+function escapeAttr(s) {
+    return escapeHtml(s);
+}
 
-window.addEventListener('DOMContentLoaded', function() {{
+window.addEventListener('DOMContentLoaded', function() {
+    if (sortedTraceIds && sortedTraceIds.length > 0) {
+        switchTrace(sortedTraceIds[0]);
+    }
     var selects = document.querySelectorAll('.trace-selector-bar select');
-    selects.forEach(function(s) {{
-        Plotly.Plots.resize(s.closest('.container'));
-    }});
-}});
+    selects.forEach(function(s) {
+        if (s && s.closest) {
+            var c = s.closest('.container');
+            if (c) Plotly.Plots.resize(c);
+        }
+    });
+});
 </script>"""
 
     def export_combined(

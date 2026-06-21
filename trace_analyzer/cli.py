@@ -274,16 +274,27 @@ def visualize(ctx, input_file, format_name, output, service, max_traces):
                 })
             service_breakdown = {}
             error_count = 0
+            min_ts = None
+            max_ts = None
             for s in trace_spans:
                 svc = s.get("service_name", "unknown")
                 service_breakdown[svc] = service_breakdown.get(svc, 0) + s.get("duration_ms", 0)
                 if s.get("error", False):
                     error_count += 1
+                ts = s.get("timestamp_ms", 0)
+                dur = s.get("duration_ms", 0)
+                if min_ts is None or ts < min_ts:
+                    min_ts = ts
+                end_ts = ts + dur
+                if max_ts is None or end_ts > max_ts:
+                    max_ts = end_ts
+            total_duration_ms = (max_ts - min_ts) if (min_ts is not None and max_ts is not None) else 0
             trace_data[trace_id] = {
                 "waterfall_fig": wf_fig,
                 "flame_fig": fl_fig,
                 "critical_path": cp_serialized,
                 "critical_duration_ms": cp_dur,
+                "total_duration_ms": total_duration_ms,
                 "span_count": len(trace_spans),
                 "error_count": error_count,
                 "service_breakdown": service_breakdown,
