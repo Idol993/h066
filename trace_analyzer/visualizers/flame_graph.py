@@ -1,8 +1,15 @@
 from typing import Dict, List, Optional
+import html
 import plotly.graph_objects as go
 import plotly.colors as pc
 
 from ..utils.config_loader import ConfigLoader
+
+
+def _e(s: str) -> str:
+    if s is None:
+        return ""
+    return html.escape(str(s))
 
 
 class FlameGraph:
@@ -60,7 +67,7 @@ class FlameGraph:
             values.append(service_total[svc])
             colors.append(self._service_color_map.get(svc, "#888888"))
             hover_texts.append(
-                f"<b>{svc}</b><br>"
+                f"<b>{_e(svc)}</b><br>"
                 f"Total: {service_total[svc]:.2f} ms<br>"
             )
         for it in items:
@@ -70,7 +77,7 @@ class FlameGraph:
             values.append(it["total_ms"])
             colors.append(self._service_color_map.get(it["service"], "#888888"))
             hover_texts.append(
-                f"<b>{it['service']}</b>: {it['operation']}<br>"
+                f"<b>{_e(it['service'])}</b>: {_e(it['operation'])}<br>"
                 f"Total: {it['total_ms']:.2f} ms<br>"
                 f"Count: {it['count']}<br>"
                 f"Avg: {it['avg_ms']:.2f} ms"
@@ -126,11 +133,11 @@ class FlameGraph:
             opacity = max(0.3, 1.0 - depth * 0.1)
             status = span.get("status_code", "-")
             hover = (
-                f"<b>{svc}</b>: {op}<br>"
+                f"<b>{_e(svc)}</b>: {_e(op)}<br>"
                 f"Depth: {depth}<br>"
                 f"Duration: {dur:.2f} ms<br>"
                 f"Start: +{start:.2f} ms<br>"
-                f"Status: {status}"
+                f"Status: {_e(str(status))}"
             )
             fig.add_trace(go.Scatter(
                 x=[start, start + dur, start + dur, start, start],
@@ -208,10 +215,10 @@ class FlameGraph:
                 hoveron="fills",
                 hoverinfo="text",
                 text=(
-                    f"<b>{svc}</b>: {op}<br>"
+                    f"<b>{_e(svc)}</b>: {_e(op)}<br>"
                     f"Duration: {dur:.2f} ms<br>"
                     f"Start: +{start:.2f} ms<br>"
-                    f"Status: {status}"
+                    f"Status: {_e(str(status))}"
                 ),
                 showlegend=False,
             ))

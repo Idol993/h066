@@ -1,8 +1,15 @@
 from typing import Dict, List, Optional
+import html
 import plotly.graph_objects as go
 import plotly.colors as pc
 
 from ..utils.config_loader import ConfigLoader
+
+
+def _e(s: str) -> str:
+    if s is None:
+        return ""
+    return html.escape(str(s))
 
 
 class WaterfallChart:
@@ -67,12 +74,12 @@ class WaterfallChart:
                 colors.append(self._service_color_map.get(service, "#888888"))
             status = span.get("status_code", "-")
             hover_texts.append(
-                f"<b>{service}</b>: {operation}<br>"
+                f"<b>{_e(service)}</b>: {_e(operation)}<br>"
                 f"Duration: {duration:.2f} ms<br>"
                 f"Start: +{start:.2f} ms<br>"
-                f"Status: {status}<br>"
-                f"Trace: {trace_id}<br>"
-                f"Span: {span.get('span_id', '')}"
+                f"Status: {_e(str(status))}<br>"
+                f"Trace: {_e(trace_id)}<br>"
+                f"Span: {_e(span.get('span_id', ''))}"
             )
         fig = go.Figure()
         fig.add_trace(

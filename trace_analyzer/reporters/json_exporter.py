@@ -11,6 +11,7 @@ class JSONExporter:
         output_path: str,
         critical_paths: Optional[Dict[str, List[Dict]]] = None,
         slow_spans: Optional[List[Dict]] = None,
+        slow_spans_raw: Optional[List[Dict]] = None,
         error_summary: Optional[Dict] = None,
         latency_stats: Optional[Dict] = None,
         bottlenecks: Optional[List[Dict]] = None,
@@ -22,9 +23,11 @@ class JSONExporter:
         result = {
             "generated_at": TimeUtils.epoch_ms_to_iso(time.time() * 1000),
             "critical_path": self._serialize_critical_paths(critical_paths or {}),
-            "slow_spans": self._serialize_slow_spans(slow_spans or []),
+            "slow_spans": self._serialize_slow_spans_aggregated(slow_spans or []),
             "error_summary": self._serialize_error_summary(error_summary or {}),
         }
+        if slow_spans_raw:
+            result["slow_spans_raw"] = self._serialize_slow_spans_raw(slow_spans_raw or [])
         if latency_stats:
             result["latency_stats"] = latency_stats
         if bottlenecks:
@@ -51,7 +54,24 @@ class JSONExporter:
         )
         return dict(sorted_paths)
 
-    def _serialize_slow_spans(self, spans: List[Dict], top_n: int = 100) -> List[Dict]:
+    def _serialize_slow_spans_aggregated(self, stats: List[Dict]) -> List[Dict]:
+        return [
+            {
+                "service_name": s.get("service_name"),
+                "operation_name": s.get("operation_name"),
+                "count": s.get("count", 0),
+                "p50_ms": s.get("p50_ms", 0),
+                "p90_ms": s.get("p90_ms", 0),
+                "p99_ms": s.get("p99_ms", 0),
+                "avg_ms": s.get("avg_ms", 0),
+                "max_ms": s.get("max_ms", 0),
+                "min_ms": s.get("min_ms", 0),
+                "total_ms": s.get("total_ms", 0),
+            }
+            for s in stats
+        ]
+
+    def _serialize_slow_spans_raw(self, spans: List[Dict], top_n: int = 100) -> List[Dict]:
         return [
             {
                 "service_name": s.get("service_name"),

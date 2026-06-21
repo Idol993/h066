@@ -1,0 +1,294 @@
+{
+  "generated_at": "2026-06-21T17:27:50.981570+00:00",
+  "critical_path": {
+    "trace-<script>alert('xss')</script>-001": {
+      "total_duration_ms": 800.0,
+      "span_count": 1,
+      "spans": [
+        {
+          "span_id": "span-003",
+          "parent_span_id": "span-001",
+          "service_name": "user-service",
+          "operation_name": "user-service: query_db",
+          "duration_ms": 800.0,
+          "timestamp_ms": 1718880000300.0,
+          "error": false,
+          "status_code": null,
+          "pct_of_critical_path": 100.0
+        }
+      ]
+    },
+    "trace-normal-002": {
+      "total_duration_ms": 50.0,
+      "span_count": 1,
+      "spans": [
+        {
+          "span_id": "span-005",
+          "parent_span_id": "span-004",
+          "service_name": "auth'service",
+          "operation_name": "auth-service: quick_check",
+          "duration_ms": 50.0,
+          "timestamp_ms": 1718880010050.0,
+          "error": false,
+          "status_code": "200",
+          "pct_of_critical_path": 100.0
+        }
+      ]
+    }
+  },
+  "slow_spans": [
+    {
+      "service_name": "gateway<script>alert(1)</script>",
+      "operation_name": "api-gateway: <img src=x onerror=alert(1)>",
+      "count": 1,
+      "p50_ms": 1500.0,
+      "p90_ms": 1500.0,
+      "p99_ms": 1500.0,
+      "avg_ms": 1500.0,
+      "max_ms": 1500.0,
+      "min_ms": 1500.0,
+      "total_ms": 1500.0
+    },
+    {
+      "service_name": "user-service",
+      "operation_name": "user-service: query_db",
+      "count": 1,
+      "p50_ms": 800.0,
+      "p90_ms": 800.0,
+      "p99_ms": 800.0,
+      "avg_ms": 800.0,
+      "max_ms": 800.0,
+      "min_ms": 800.0,
+      "total_ms": 800.0
+    },
+    {
+      "service_name": "gateway<script>alert(1)</script>",
+      "operation_name": "api-gateway: fast_call",
+      "count": 1,
+      "p50_ms": 300.0,
+      "p90_ms": 300.0,
+      "p99_ms": 300.0,
+      "avg_ms": 300.0,
+      "max_ms": 300.0,
+      "min_ms": 300.0,
+      "total_ms": 300.0
+    },
+    {
+      "service_name": "auth'service",
+      "operation_name": "auth-service: validate\"onmouseover=alert(1)",
+      "count": 1,
+      "p50_ms": 200.0,
+      "p90_ms": 200.0,
+      "p99_ms": 200.0,
+      "avg_ms": 200.0,
+      "max_ms": 200.0,
+      "min_ms": 200.0,
+      "total_ms": 200.0
+    },
+    {
+      "service_name": "auth'service",
+      "operation_name": "auth-service: quick_check",
+      "count": 1,
+      "p50_ms": 50.0,
+      "p90_ms": 50.0,
+      "p99_ms": 50.0,
+      "avg_ms": 50.0,
+      "max_ms": 50.0,
+      "min_ms": 50.0,
+      "total_ms": 50.0
+    }
+  ],
+  "error_summary": {
+    "total_spans": 5,
+    "total_errors": 0,
+    "overall_error_rate": 0.0,
+    "services": [
+      {
+        "service_name": "gateway<script>alert(1)</script>",
+        "total_count": 2,
+        "error_count": 0,
+        "error_rate": 0.0,
+        "error_types": {},
+        "error_spans": []
+      },
+      {
+        "service_name": "auth'service",
+        "total_count": 2,
+        "error_count": 0,
+        "error_rate": 0.0,
+        "error_types": {},
+        "error_spans": []
+      },
+      {
+        "service_name": "user-service",
+        "total_count": 1,
+        "error_count": 0,
+        "error_rate": 0.0,
+        "error_types": {},
+        "error_spans": []
+      }
+    ]
+  },
+  "slow_spans_raw": [
+    {
+      "service_name": "gateway<script>alert(1)</script>",
+      "operation_name": "api-gateway: <img src=x onerror=alert(1)>",
+      "trace_id": "trace-<script>alert('xss')</script>-001",
+      "span_id": "span-001",
+      "duration_ms": 1500.0,
+      "timestamp_ms": 1718880000000.0,
+      "error": false,
+      "status_code": "200"
+    },
+    {
+      "service_name": "user-service",
+      "operation_name": "user-service: query_db",
+      "trace_id": "trace-<script>alert('xss')</script>-001",
+      "span_id": "span-003",
+      "duration_ms": 800.0,
+      "timestamp_ms": 1718880000300.0,
+      "error": false,
+      "status_code": null
+    },
+    {
+      "service_name": "gateway<script>alert(1)</script>",
+      "operation_name": "api-gateway: fast_call",
+      "trace_id": "trace-normal-002",
+      "span_id": "span-004",
+      "duration_ms": 300.0,
+      "timestamp_ms": 1718880010000.0,
+      "error": false,
+      "status_code": "200"
+    },
+    {
+      "service_name": "auth'service",
+      "operation_name": "auth-service: validate\"onmouseover=alert(1)",
+      "trace_id": "trace-<script>alert('xss')</script>-001",
+      "span_id": "span-002",
+      "duration_ms": 200.0,
+      "timestamp_ms": 1718880000100.0,
+      "error": false,
+      "status_code": "200"
+    },
+    {
+      "service_name": "auth'service",
+      "operation_name": "auth-service: quick_check",
+      "trace_id": "trace-normal-002",
+      "span_id": "span-005",
+      "duration_ms": 50.0,
+      "timestamp_ms": 1718880010050.0,
+      "error": false,
+      "status_code": "200"
+    }
+  ],
+  "latency_stats": {
+    "span_stats": [
+      {
+        "service_name": "auth'service",
+        "operation_name": "auth-service: quick_check",
+        "count": 1,
+        "p50_ms": 50.0,
+        "p90_ms": 50.0,
+        "p99_ms": 50.0,
+        "avg_ms": 50.0,
+        "max_ms": 50.0,
+        "min_ms": 50.0,
+        "total_ms": 50.0
+      },
+      {
+        "service_name": "auth'service",
+        "operation_name": "auth-service: validate\"onmouseover=alert(1)",
+        "count": 1,
+        "p50_ms": 200.0,
+        "p90_ms": 200.0,
+        "p99_ms": 200.0,
+        "avg_ms": 200.0,
+        "max_ms": 200.0,
+        "min_ms": 200.0,
+        "total_ms": 200.0
+      },
+      {
+        "service_name": "gateway<script>alert(1)</script>",
+        "operation_name": "api-gateway: <img src=x onerror=alert(1)>",
+        "count": 1,
+        "p50_ms": 1500.0,
+        "p90_ms": 1500.0,
+        "p99_ms": 1500.0,
+        "avg_ms": 1500.0,
+        "max_ms": 1500.0,
+        "min_ms": 1500.0,
+        "total_ms": 1500.0
+      },
+      {
+        "service_name": "gateway<script>alert(1)</script>",
+        "operation_name": "api-gateway: fast_call",
+        "count": 1,
+        "p50_ms": 300.0,
+        "p90_ms": 300.0,
+        "p99_ms": 300.0,
+        "avg_ms": 300.0,
+        "max_ms": 300.0,
+        "min_ms": 300.0,
+        "total_ms": 300.0
+      },
+      {
+        "service_name": "user-service",
+        "operation_name": "user-service: query_db",
+        "count": 1,
+        "p50_ms": 800.0,
+        "p90_ms": 800.0,
+        "p99_ms": 800.0,
+        "avg_ms": 800.0,
+        "max_ms": 800.0,
+        "min_ms": 800.0,
+        "total_ms": 800.0
+      }
+    ],
+    "service_stats": [
+      {
+        "service_name": "auth'service",
+        "span_count": 2,
+        "operation_count": 2,
+        "p50_ms": 125.0,
+        "p90_ms": 185.0,
+        "p99_ms": 198.5,
+        "avg_ms": 125.0,
+        "total_ms": 250.0
+      },
+      {
+        "service_name": "gateway<script>alert(1)</script>",
+        "span_count": 2,
+        "operation_count": 2,
+        "p50_ms": 900.0,
+        "p90_ms": 1380.0,
+        "p99_ms": 1488.0,
+        "avg_ms": 900.0,
+        "total_ms": 1800.0
+      },
+      {
+        "service_name": "user-service",
+        "span_count": 1,
+        "operation_count": 1,
+        "p50_ms": 800.0,
+        "p90_ms": 800.0,
+        "p99_ms": 800.0,
+        "avg_ms": 800.0,
+        "total_ms": 800.0
+      }
+    ]
+  },
+  "bottleneck_services": [
+    {
+      "service_name": "user-service",
+      "critical_count": 1,
+      "total_critical_duration_ms": 800.0
+    },
+    {
+      "service_name": "auth'service",
+      "critical_count": 1,
+      "total_critical_duration_ms": 50.0
+    }
+  ],
+  "total_spans": 5,
+  "total_traces": 2
+}

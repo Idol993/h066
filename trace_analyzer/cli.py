@@ -16,6 +16,7 @@ from trace_analyzer.analyzers.error_aggregator import ErrorAggregator
 from trace_analyzer.analyzers.critical_path import CriticalPathFinder
 from trace_analyzer.visualizers.waterfall_chart import WaterfallChart
 from trace_analyzer.visualizers.flame_graph import FlameGraph
+from trace_analyzer.visualizers.topology_graph import TopologyGraph
 from trace_analyzer.visualizers.html_exporter import HTMLExporter
 from trace_analyzer.reporters.terminal_reporter import TerminalReporter
 from trace_analyzer.reporters.json_exporter import JSONExporter
@@ -206,14 +207,14 @@ def analyze(ctx, input_file, format_name, output, top_n, service):
     out_path = exporter.export(
         output_path=output,
         critical_paths=cp_finder.critical_paths,
-        slow_spans=latency_result.get("slow_spans", []),
+        slow_spans=slowest,
+        slow_spans_raw=latency_result.get("slow_spans", []),
         error_summary=error_result,
         latency_stats={"span_stats": latency_result.get("span_stats", []), "service_stats": latency_result.get("service_stats", [])},
         bottlenecks=bottlenecks,
         extra={
             "total_spans": len(spans),
             "total_traces": len(traces),
-            "slowest_spans": slowest,
         },
     )
     console.print(f"[green]JSON report saved to: {out_path}[/green]")
@@ -251,7 +252,10 @@ def visualize(ctx, input_file, format_name, output, service, max_traces):
         progress.add_task("Generating charts...", total=None)
         waterfall = WaterfallChart(config)
         flame = FlameGraph(config)
+        topology = TopologyGraph(config)
         exporter = HTMLExporter()
+        topology.build(spans, builder)
+        topology_fig, topology_data = topology.generate_figure()
         slowest_traces = cp_finder.get_slowest_traces(n=max_traces)
         trace_data = {}
         for trace_id, cp_spans, cp_dur in slowest_traces:
@@ -268,12 +272,21 @@ def visualize(ctx, input_file, format_name, output, service, max_traces):
                     "duration_ms": s.get("duration_ms", 0),
                     "pct_of_critical_path": s.get("pct_of_critical_path"),
                 })
+            service_breakdown = {}
+            error_count = 0
+            for s in trace_spans:
+                svc = s.get("service_name", "unknown")
+                service_breakdown[svc] = service_breakdown.get(svc, 0) + s.get("duration_ms", 0)
+                if s.get("error", False):
+                    error_count += 1
             trace_data[trace_id] = {
                 "waterfall_fig": wf_fig,
                 "flame_fig": fl_fig,
                 "critical_path": cp_serialized,
                 "critical_duration_ms": cp_dur,
                 "span_count": len(trace_spans),
+                "error_count": error_count,
+                "service_breakdown": service_breakdown,
             }
         overview_fig = flame.generate(spans)
         summary = {
@@ -291,6 +304,8 @@ def visualize(ctx, input_file, format_name, output, service, max_traces):
         output_path=output,
         trace_data=trace_data,
         summary_overview_fig=overview_fig,
+        topology_fig=topology_fig,
+        topology_data=topology_data,
         summary=summary,
     )
     console.print(f"[green]HTML report saved to: {out_path}[/green]")
