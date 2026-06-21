@@ -104,4 +104,5 @@ class JSONExporter:
             "timestamp_ms": span.get("timestamp_ms", 0),
             "error": span.get("error", False),
             "status_code": span.get("status_code"),
+            "pct_of_critical_path": span.get("pct_of_critical_path"),
         }

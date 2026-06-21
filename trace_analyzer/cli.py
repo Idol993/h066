@@ -152,7 +152,7 @@ def parse(ctx, input_file, format_name, output, service, min_duration):
 @cli.command()
 @click.argument("input_file", type=click.Path(exists=True, dir_okay=False))
 @click.option("--format", "format_name", type=click.Choice(["jaeger", "zipkin", "otel", "jsonl"]), help="Trace format")
-@click.option("--output", "-o", type=click.Path(), help="Output JSON report path")
+@click.option("--output", "-o", type=click.Path(), help="Output JSON report path (default: trace_summary_<timestamp>.json)")
 @click.option("--top-n", type=int, default=20, help="Number of top slow spans to show")
 @click.option("--service", help="Filter by service name")
 @click.pass_context
@@ -199,32 +199,34 @@ def analyze(ctx, input_file, format_name, output, top_n, service):
     hint = summary_gen.generate_brief_hint(slowest, error_result)
     console.rule("[bold]Quick Hint")
     console.print(hint)
-    if output:
-        exporter = JSONExporter()
-        out_path = exporter.export(
-            output_path=output,
-            critical_paths=cp_finder.critical_paths,
-            slow_spans=latency_result.get("slow_spans", []),
-            error_summary=error_result,
-            latency_stats={"span_stats": latency_result.get("span_stats", []), "service_stats": latency_result.get("service_stats", [])},
-            bottlenecks=bottlenecks,
-            extra={
-                "total_spans": len(spans),
-                "total_traces": len(traces),
-                "slowest_spans": slowest,
-            },
-        )
-        console.print(f"[green]JSON report saved to: {out_path}[/green]")
+    if not output:
+        ts = TimeUtils.now_timestamp()
+        output = f"trace_summary_{ts}.json"
+    exporter = JSONExporter()
+    out_path = exporter.export(
+        output_path=output,
+        critical_paths=cp_finder.critical_paths,
+        slow_spans=latency_result.get("slow_spans", []),
+        error_summary=error_result,
+        latency_stats={"span_stats": latency_result.get("span_stats", []), "service_stats": latency_result.get("service_stats", [])},
+        bottlenecks=bottlenecks,
+        extra={
+            "total_spans": len(spans),
+            "total_traces": len(traces),
+            "slowest_spans": slowest,
+        },
+    )
+    console.print(f"[green]JSON report saved to: {out_path}[/green]")
 
 
 @cli.command()
 @click.argument("input_file", type=click.Path(exists=True, dir_okay=False))
 @click.option("--format", "format_name", type=click.Choice(["jaeger", "zipkin", "otel", "jsonl"]), help="Trace format")
 @click.option("--output", "-o", type=click.Path(), help="Output HTML path")
-@click.option("--trace-id", help="Specific trace ID for waterfall chart")
 @click.option("--service", help="Filter by service name")
+@click.option("--max-traces", type=int, default=20, help="Max number of traces to include in report")
 @click.pass_context
-def visualize(ctx, input_file, format_name, output, trace_id, service):
+def visualize(ctx, input_file, format_name, output, service, max_traces):
     config = ctx.obj["config"]
     spans = parse_file(input_file, format_name)
     if service:
@@ -250,20 +252,30 @@ def visualize(ctx, input_file, format_name, output, trace_id, service):
         waterfall = WaterfallChart(config)
         flame = FlameGraph(config)
         exporter = HTMLExporter()
-        target_trace_id = trace_id
-        if not target_trace_id:
-            slowest = cp_finder.get_slowest_traces(n=1)
-            if slowest:
-                target_trace_id = slowest[0][0]
-        waterfall_fig = None
-        if target_trace_id:
-            tree = builder.get_trace_tree(target_trace_id) or {}
-            trace_spans = builder.get_trace_spans_flat(target_trace_id)
-            waterfall_fig = waterfall.generate_for_trace(target_trace_id, tree, trace_spans)
-        else:
-            waterfall_fig = waterfall.generate_for_traces(builder)
-        flame_fig = flame.generate(spans)
-        timeline_fig = flame.generate_timeline(spans)
+        slowest_traces = cp_finder.get_slowest_traces(n=max_traces)
+        trace_data = {}
+        for trace_id, cp_spans, cp_dur in slowest_traces:
+            tree = builder.get_trace_tree(trace_id) or {}
+            trace_spans = builder.get_trace_spans_flat(trace_id)
+            wf_fig = waterfall.generate_for_trace(trace_id, tree, trace_spans)
+            fl_fig = flame.generate_depth_view(trace_id, tree, trace_spans)
+            cp_serialized = []
+            for s in cp_spans:
+                cp_serialized.append({
+                    "span_id": s.get("span_id"),
+                    "service_name": s.get("service_name"),
+                    "operation_name": s.get("operation_name"),
+                    "duration_ms": s.get("duration_ms", 0),
+                    "pct_of_critical_path": s.get("pct_of_critical_path"),
+                })
+            trace_data[trace_id] = {
+                "waterfall_fig": wf_fig,
+                "flame_fig": fl_fig,
+                "critical_path": cp_serialized,
+                "critical_duration_ms": cp_dur,
+                "span_count": len(trace_spans),
+            }
+        overview_fig = flame.generate(spans)
         summary = {
             "total_spans": len(spans),
             "total_traces": len(traces),
@@ -275,14 +287,14 @@ def visualize(ctx, input_file, format_name, output, trace_id, service):
     ts = TimeUtils.now_timestamp()
     if not output:
         output = f"trace_analysis_{ts}.html"
-    out_path = exporter.export_combined(
+    out_path = exporter.export_multi_trace(
         output_path=output,
-        waterfall_fig=waterfall_fig,
-        flame_fig=flame_fig,
-        timeline_fig=timeline_fig,
+        trace_data=trace_data,
+        summary_overview_fig=overview_fig,
         summary=summary,
     )
     console.print(f"[green]HTML report saved to: {out_path}[/green]")
+    console.print(f"[cyan]Included {len(trace_data)} traces (sorted by critical path duration)[/cyan]")
     console.print("[cyan]Open this file in your browser to view interactive charts[/cyan]")
 
 

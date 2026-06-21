@@ -100,17 +100,22 @@ class TerminalReporter:
         table.add_column("Service")
         table.add_column("Operation")
         table.add_column("Duration", justify="right")
-        table.add_column("% of Total", justify="right")
+        table.add_column("% of Critical", justify="right")
+        table.add_column("Cumulative", justify="right")
+        cumulative = 0.0
         for i, span in enumerate(path, 1):
             dur = span.get("duration_ms", 0)
-            pct = (dur / duration_ms * 100) if duration_ms > 0 else 0
+            cumulative += dur
+            pct = span.get("pct_of_critical_path", round(dur / duration_ms * 100, 1) if duration_ms > 0 else 0.0)
             color = self._get_latency_color(dur)
+            cum_pct = round(cumulative / duration_ms * 100, 1) if duration_ms > 0 else 0.0
             table.add_row(
                 str(i),
                 span.get("service_name", "-"),
                 span.get("operation_name", "-"),
                 Text(TimeUtils.format_duration_ms(dur), style=color),
                 f"{pct:.1f}%",
+                f"{cum_pct:.1f}% ({TimeUtils.format_duration_ms(cumulative)})",
             )
         self.console.print(table)
 

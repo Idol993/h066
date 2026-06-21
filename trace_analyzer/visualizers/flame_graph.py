@@ -29,7 +29,7 @@ class FlameGraph:
         all_services = {s.get("service_name", "unknown") for s in spans}
         self._init_service_colors(list(all_services))
         from collections import defaultdict
-        agg = defaultdict(lambda: {"total_ms": 0.0, "count": 0, "service": "", "children": defaultdict(lambda: {"total_ms": 0.0, "count": 0, "service": ""})})
+        agg = defaultdict(lambda: {"total_ms": 0.0, "count": 0, "service": ""})
         for span in spans:
             svc = span.get("service_name", "unknown")
             op = span.get("operation_name", "unknown")
@@ -86,11 +86,98 @@ class FlameGraph:
             branchvalues="total",
         ))
         fig.update_layout(
-            title="Flame Graph - Service & Operation Latency Overview",
+            title="Service Overview - Latency by Service & Operation",
             height=700,
             margin=dict(t=50, l=0, r=0, b=0),
         )
         return fig
+
+    def generate_depth_view(self, trace_id: str, trace_tree: dict, spans: List[dict]) -> go.Figure:
+        if not spans:
+            return go.Figure()
+        all_services = {s.get("service_name", "unknown") for s in spans}
+        self._init_service_colors(list(all_services))
+        flat_nodes: List[dict] = []
+        self._flatten_tree(trace_tree, flat_nodes)
+        if not flat_nodes:
+            flat_nodes = [
+                {"span": s, "depth": 0, "span_id": s.get("span_id")}
+                for s in sorted(spans, key=lambda x: x.get("timestamp_ms", 0))
+            ]
+        min_start = min(
+            (n["span"].get("timestamp_ms", 0) for n in flat_nodes if n.get("span")),
+            default=0,
+        )
+        fig = go.Figure()
+        for node in flat_nodes:
+            span = node.get("span")
+            if not span:
+                continue
+            depth = node.get("depth", 0)
+            svc = span.get("service_name", "unknown")
+            op = span.get("operation_name", "unknown")
+            start = span.get("timestamp_ms", 0) - min_start
+            dur = span.get("duration_ms", 0)
+            is_error = span.get("error", False)
+            if is_error:
+                color = self.config["colors"]["latency_red"]
+            else:
+                color = self._service_color_map.get(svc, "#888888")
+            opacity = max(0.3, 1.0 - depth * 0.1)
+            status = span.get("status_code", "-")
+            hover = (
+                f"<b>{svc}</b>: {op}<br>"
+                f"Depth: {depth}<br>"
+                f"Duration: {dur:.2f} ms<br>"
+                f"Start: +{start:.2f} ms<br>"
+                f"Status: {status}"
+            )
+            fig.add_trace(go.Scatter(
+                x=[start, start + dur, start + dur, start, start],
+                y=[depth - 0.4, depth - 0.4, depth + 0.4, depth + 0.4, depth - 0.4],
+                mode="lines",
+                fill="toself",
+                fillcolor=color,
+                line=dict(color=color, width=1),
+                opacity=opacity,
+                hoveron="fills",
+                hoverinfo="text",
+                text=hover,
+                showlegend=False,
+                name=f"{svc}:{op}",
+            ))
+        max_depth = max((n.get("depth", 0) for n in flat_nodes), default=0)
+        depth_labels = [f"Depth {d}" for d in range(max_depth + 1)]
+        depth_ticks = list(range(max_depth + 1))
+        for svc in sorted(all_services):
+            fig.add_trace(go.Scatter(
+                x=[None],
+                y=[None],
+                mode="markers",
+                marker=dict(size=12, color=self._service_color_map.get(svc, "#888888")),
+                name=svc,
+            ))
+        fig.update_layout(
+            title=f"Flame Graph (Depth View) - Trace {trace_id}",
+            xaxis_title="Time (ms from trace start)",
+            yaxis=dict(
+                title="Call Depth",
+                tickmode="array",
+                tickvals=depth_ticks,
+                ticktext=depth_labels,
+                autorange="reversed",
+            ),
+            height=max(400, (max_depth + 1) * 80 + 150),
+            showlegend=True,
+            legend_title="Services",
+        )
+        return fig
+
+    def _flatten_tree(self, node: dict, result: List[dict]) -> None:
+        if node.get("span"):
+            result.append(node)
+        for child in node.get("children", []):
+            self._flatten_tree(child, result)
 
     def generate_timeline(self, spans: List[dict]) -> go.Figure:
         if not spans:
@@ -137,7 +224,7 @@ class FlameGraph:
                 name=svc,
             ))
         fig.update_layout(
-            title="Flame Timeline - All Spans by Service",
+            title="Timeline View - All Spans by Service",
             xaxis_title="Time (ms from first span)",
             yaxis=dict(
                 tickmode="array",
