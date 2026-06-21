@@ -122,6 +122,7 @@ class TopologyGraph:
         node_sizes = []
         node_hover_texts = []
         node_labels = []
+        node_customdata = []
         for node in G.nodes(data=True):
             svc = node[0]
             data = node[1]
@@ -138,6 +139,7 @@ class TopologyGraph:
             else:
                 node_colors.append(self._service_color_map.get(svc, "#888888"))
             node_labels.append(svc)
+            node_customdata.append([svc])
             avg = data.get("avg_duration_ms", 0)
             total_dur = data.get("total_duration_ms", 0)
             ec = data.get("error_count", 0)
@@ -153,6 +155,7 @@ class TopologyGraph:
         edge_hover_x = []
         edge_hover_y = []
         edge_hover_texts = []
+        edge_hover_customdata = []
         edge_widths = []
         edge_colors = []
         for edge in G.edges(data=True):
@@ -181,8 +184,9 @@ class TopologyGraph:
                 edge_colors.append("#ffa500")
             else:
                 edge_colors.append("#666666")
+            edge_hover_customdata.append([src, tgt])
             edge_hover_texts.append(
-                f"<b>{_e(src)} → {_e(tgt)}</b><br>"
+                f"<b>{_e(src)} \u2192 {_e(tgt)}</b><br>"
                 f"Calls: {cc}<br>"
                 f"Total: {total_dur:.2f} ms<br>"
                 f"Avg: {avg:.2f} ms<br>"
@@ -205,6 +209,7 @@ class TopologyGraph:
                 line=dict(width=1, color="#ffffff"),
                 symbol="circle",
             ),
+            customdata=edge_hover_customdata,
             hovertext=edge_hover_texts,
             hoverinfo="text",
             name="Calls",
@@ -215,6 +220,7 @@ class TopologyGraph:
             mode="markers+text",
             text=node_labels,
             textposition="top center",
+            customdata=node_customdata,
             marker=dict(
                 size=node_sizes,
                 color=node_colors,

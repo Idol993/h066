@@ -81,6 +81,8 @@ class HTMLExporter:
                 div_id="topology-chart",
             )
         trace_json_data = {}
+        all_services = set()
+        all_operations = set()
         for tid in sorted_trace_ids:
             td = trace_data[tid]
             trace_json_data[tid] = {
@@ -89,8 +91,15 @@ class HTMLExporter:
                 "critical_path": td.get("critical_path", []),
                 "span_count": td.get("span_count", 0),
                 "error_count": td.get("error_count", 0),
+                "has_errors": td.get("has_errors", False),
+                "services": td.get("services", []),
                 "service_breakdown": td.get("service_breakdown", {}),
+                "operation_breakdown": td.get("operation_breakdown", {}),
             }
+            for svc in td.get("services", []):
+                all_services.add(svc)
+            for op_key in (td.get("operation_breakdown", {}) or {}).keys():
+                all_operations.add(op_key)
         per_trace_html_parts = []
         for tid in sorted_trace_ids:
             td = trace_data[tid]
@@ -173,6 +182,11 @@ class HTMLExporter:
         def _safe_json(obj) -> str:
             return json.dumps(obj, default=str, ensure_ascii=False).replace('</script>', '<\\/script>')
 
+        sorted_service_list = sorted(all_services)
+        service_filter_options = '<option value="">All Services</option>\n'
+        for svc in sorted_service_list:
+            service_filter_options += f'<option value="{_e(svc)}">{_e(svc)}</option>\n'
+
         trace_json_str = _safe_json(trace_json_data_safe)
         safe_to_orig_str = _safe_json(safe_to_orig)
         compare_select_a = trace_selector_options
@@ -194,6 +208,7 @@ class HTMLExporter:
             safe_to_orig_str=safe_to_orig_str,
             topology_node_json=_safe_json(topology_data.get("node_data", {}) if topology_data else {}),
             topology_edge_json=_safe_json(topology_data.get("edge_data", {}) if topology_data else {}),
+            all_services_json=_safe_json(sorted_service_list),
         )
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -207,6 +222,46 @@ class HTMLExporter:
 <body>
 <div class="container">
     <h1>🔍 Distributed Trace Analysis Report</h1>
+
+    <div class="export-bar">
+        <span class="status" id="export-status">Ready — apply filters to narrow down traces</span>
+        <div>
+            <button class="btn-export" onclick="exportCurrentView()">⬇️ Export Analysis JSON</button>
+        </div>
+    </div>
+
+    <div class="filter-bar">
+        <h3>🔎 Global Filters</h3>
+        <div class="filter-row">
+            <div class="filter-item">
+                <label for="filter-service">Service</label>
+                <select id="filter-service">
+                    {service_filter_options}
+                </select>
+            </div>
+            <div class="filter-item">
+                <label for="filter-operation">Operation (substring)</label>
+                <input type="text" id="filter-operation" placeholder="e.g. select, query, http">
+            </div>
+            <div class="filter-item checkbox-row">
+                <input type="checkbox" id="filter-error-only">
+                <label for="filter-error-only">Only traces with errors</label>
+            </div>
+            <div class="filter-item">
+                <label for="filter-min-dur">Min duration (ms)</label>
+                <input type="number" id="filter-min-dur" placeholder="e.g. 500" min="0">
+            </div>
+            <div class="filter-item">
+                <label for="filter-max-dur">Max duration (ms)</label>
+                <input type="number" id="filter-max-dur" placeholder="e.g. 5000" min="0">
+            </div>
+            <div class="filter-buttons">
+                <button class="btn-apply" onclick="applyFilters()">Apply</button>
+                <button class="btn-clear" onclick="clearFilters()">Clear</button>
+            </div>
+        </div>
+    </div>
+
     {summary_html}
 
     <div class="tabs">
@@ -370,6 +425,49 @@ tr:hover { background: #f8f9fa; }
     color: #0077cc; cursor: pointer; text-decoration: underline;
 }
 .trace-link:hover { color: #005599; }
+.filter-bar {
+    background: white; border-radius: 8px; padding: 15px 20px;
+    margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.filter-bar h3 { margin: 0 0 10px 0; font-size: 15px; }
+.filter-row {
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;
+}
+.filter-item { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
+.filter-item label { font-size: 12px; color: #666; font-weight: 600; }
+.filter-item input[type="text"], .filter-item input[type="number"], .filter-item select {
+    padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+}
+.filter-item.checkbox-row { flex-direction: row; align-items: center; gap: 6px; }
+.filter-buttons { display: flex; gap: 8px; align-items: flex-end; }
+.filter-buttons button {
+    padding: 7px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.btn-apply { background: #0077cc; color: white; }
+.btn-apply:hover { background: #005fa3; }
+.btn-clear { background: #e9ecef; color: #333; }
+.btn-clear:hover { background: #dee2e6; }
+.btn-export { background: #28a745; color: white; }
+.btn-export:hover { background: #218838; }
+.export-bar {
+    background: white; border-radius: 8px; padding: 12px 20px;
+    margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.export-bar .status { font-size: 13px; color: #666; }
+.operation-compare-section { margin-top: 20px; }
+.op-compare-table td, .op-compare-table th { font-size: 13px; padding: 8px; }
+.op-group-title {
+    margin: 20px 0 8px 0; padding: 6px 12px; border-radius: 4px;
+    font-size: 14px; font-weight: 600;
+}
+.op-group-title.common { background: #e3f2fd; color: #1565c0; }
+.op-group-title.only-a { background: #fce4ec; color: #c62828; }
+.op-group-title.only-b { background: #e8f5e9; color: #2e7d32; }
+.filter-empty-hint {
+    background: #fff3cd; border: 1px solid #ffeeba; color: #856404;
+    padding: 15px; border-radius: 6px; text-align: center; margin: 15px 0;
+}
 </style>"""
 
     def _render_js(
@@ -379,11 +477,13 @@ tr:hover { background: #f8f9fa; }
         safe_to_orig_str: str,
         topology_node_json: str,
         topology_edge_json: str,
+        all_services_json: str,
     ) -> str:
         return r"""<script>
 var traceData = """ + trace_json_str + r""";
 var sortedTraceIds = """ + sorted_trace_ids_json + r""";
 var safeToOrig = """ + safe_to_orig_str + r""";
+var allServices = """ + all_services_json + r""";
 var origToSafe = {};
 for (var origId in safeToOrig) {
     var safeId = origId;
@@ -392,6 +492,16 @@ for (var origId in safeToOrig) {
 }
 var topologyNodeData = """ + topology_node_json + r""";
 var topologyEdgeData = """ + topology_edge_json + r""";
+
+var currentFilters = {
+    service: "",
+    operation: "",
+    errorOnly: false,
+    minDuration: null,
+    maxDuration: null,
+};
+var filteredTraceIds = sortedTraceIds.slice();
+var lastTopologySelection = null;
 
 function switchMainTab(evt, tabName) {
     var tabcontent = document.getElementsByClassName("tab-content");
@@ -455,13 +565,135 @@ document.addEventListener('click', function(e) {
     }
 });
 
+function traceMatchesFilter(safeId) {
+    var meta = traceData[safeId];
+    if (!meta) return false;
+    if (currentFilters.service) {
+        var svcs = meta.services || [];
+        if (svcs.indexOf(currentFilters.service) === -1) return false;
+    }
+    if (currentFilters.operation) {
+        var ops = Object.keys(meta.operation_breakdown || {});
+        var found = false;
+        var lower = currentFilters.operation.toLowerCase();
+        for (var i = 0; i < ops.length; i++) {
+            if (ops[i].toLowerCase().indexOf(lower) !== -1) { found = true; break; }
+        }
+        if (!found) return false;
+    }
+    if (currentFilters.errorOnly && !meta.has_errors) return false;
+    if (currentFilters.minDuration !== null) {
+        if ((meta.total_duration_ms || 0) < currentFilters.minDuration) return false;
+    }
+    if (currentFilters.maxDuration !== null) {
+        if ((meta.total_duration_ms || 0) > currentFilters.maxDuration) return false;
+    }
+    return true;
+}
+
+function updateStatusBar() {
+    var el = document.getElementById('export-status');
+    if (!el) return;
+    var total = sortedTraceIds.length;
+    var shown = filteredTraceIds.length;
+    var parts = [];
+    if (currentFilters.service) parts.push('service=' + currentFilters.service);
+    if (currentFilters.operation) parts.push('operation~' + currentFilters.operation);
+    if (currentFilters.errorOnly) parts.push('errors only');
+    if (currentFilters.minDuration !== null) parts.push('>=' + currentFilters.minDuration + 'ms');
+    if (currentFilters.maxDuration !== null) parts.push('<=' + currentFilters.maxDuration + 'ms');
+    var filterText = parts.length > 0 ? (' [' + parts.join(', ') + ']') : '';
+    el.textContent = 'Showing ' + shown + ' / ' + total + ' traces' + filterText;
+}
+
+function rebuildSelectOptions(selectEl, ids, firstIndex) {
+    if (!selectEl) return;
+    var currentVal = selectEl.value;
+    selectEl.innerHTML = '';
+    if (ids.length === 0) {
+        var opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No traces match filters';
+        selectEl.appendChild(opt);
+        return;
+    }
+    for (var i = 0; i < ids.length; i++) {
+        var safeId = ids[i];
+        var origId = safeToOrig[safeId] || safeId;
+        var meta = traceData[safeId];
+        if (!meta) continue;
+        var display = origId;
+        if (display.length > 16) display = display.slice(0, 16) + '...';
+        var label = display + ' (' + (meta.total_duration_ms || 0).toFixed(0) + 'ms total, ' +
+            (meta.critical_duration_ms || 0).toFixed(0) + 'ms CP, ' + meta.span_count + ' spans)';
+        var opt = document.createElement('option');
+        opt.value = safeId;
+        opt.textContent = label;
+        selectEl.appendChild(opt);
+    }
+    if (ids.indexOf(currentVal) !== -1) {
+        selectEl.value = currentVal;
+    } else {
+        selectEl.value = ids[Math.min(firstIndex || 0, ids.length - 1)];
+    }
+}
+
+function applyFilters() {
+    currentFilters.service = document.getElementById('filter-service').value || '';
+    currentFilters.operation = document.getElementById('filter-operation').value || '';
+    currentFilters.errorOnly = document.getElementById('filter-error-only').checked;
+    var minD = document.getElementById('filter-min-dur').value;
+    var maxD = document.getElementById('filter-max-dur').value;
+    currentFilters.minDuration = minD !== '' ? parseFloat(minD) : null;
+    currentFilters.maxDuration = maxD !== '' ? parseFloat(maxD) : null;
+    filteredTraceIds = [];
+    for (var i = 0; i < sortedTraceIds.length; i++) {
+        if (traceMatchesFilter(sortedTraceIds[i])) {
+            filteredTraceIds.push(sortedTraceIds[i]);
+        }
+    }
+    rebuildSelectOptions(document.getElementById('trace-select'), filteredTraceIds, 0);
+    rebuildSelectOptions(document.getElementById('compare-a'), filteredTraceIds, 0);
+    rebuildSelectOptions(document.getElementById('compare-b'), filteredTraceIds, 1);
+    if (filteredTraceIds.length > 0) {
+        switchTrace(filteredTraceIds[0]);
+        var perTraceEmpty = document.getElementById('per-trace-empty');
+        if (perTraceEmpty) perTraceEmpty.remove();
+    } else {
+        var panels = document.querySelectorAll('.trace-panel');
+        panels.forEach(function(p) { p.style.display = 'none'; });
+        var metaEl = document.getElementById('trace-meta');
+        if (metaEl) metaEl.textContent = '';
+        var tracePanels = document.getElementById('trace-panels');
+        if (tracePanels && !document.getElementById('per-trace-empty')) {
+            var hint = document.createElement('div');
+            hint.id = 'per-trace-empty';
+            hint.className = 'filter-empty-hint';
+            hint.textContent = 'No traces match the current filters. Try adjusting the filter criteria.';
+            tracePanels.parentNode.insertBefore(hint, tracePanels);
+        }
+    }
+    updateComparison();
+    updateStatusBar();
+}
+
+function clearFilters() {
+    document.getElementById('filter-service').value = '';
+    document.getElementById('filter-operation').value = '';
+    document.getElementById('filter-error-only').checked = false;
+    document.getElementById('filter-min-dur').value = '';
+    document.getElementById('filter-max-dur').value = '';
+    applyFilters();
+}
+
 function updateComparison() {
     var safeA = document.getElementById('compare-a').value;
     var safeB = document.getElementById('compare-b').value;
     var a = traceData[safeA];
     var b = traceData[safeB];
+    var container = document.getElementById('compare-results');
     if (!a || !b) {
-        document.getElementById('compare-results').innerHTML =
+        container.innerHTML =
             '<div class="summary-card"><p class="hint-text">Please select two valid traces to compare.</p></div>';
         return;
     }
@@ -491,9 +723,9 @@ function updateComparison() {
 
     var sbA = a.service_breakdown || {};
     var sbB = b.service_breakdown || {};
-    var allServices = new Set(Object.keys(sbA).concat(Object.keys(sbB)));
+    var allSvcs = new Set(Object.keys(sbA).concat(Object.keys(sbB)));
     var diffRows = '';
-    allServices.forEach(function(svc) {
+    allSvcs.forEach(function(svc) {
         var aDur = sbA[svc] || 0;
         var bDur = sbB[svc] || 0;
         var aPct = totalA > 0 ? (aDur / totalA) * 100 : 0;
@@ -521,37 +753,9 @@ function updateComparison() {
     var cpPathB = b.critical_path || [];
     var cpARows = renderCriticalPathTable(cpPathA, cpA);
     var cpBRows = renderCriticalPathTable(cpPathB, cpB);
-    var diffOps = findDiffOperations(cpPathA, cpPathB);
-    var diffOpsHtml = '';
-    if (diffOps.added.length > 0 || diffOps.removed.length > 0 || diffOps.slower.length > 0) {
-        diffOpsHtml = '<div class="summary-card"><h3>Key Differences</h3>';
-        if (diffOps.slower.length > 0) {
-            diffOpsHtml += '<h4>Slower in B:</h4><ul>';
-            diffOps.slower.forEach(function(op) {
-                diffOpsHtml += '<li><b>' + escapeHtml(op.service) + '</b> / ' + escapeHtml(op.operation) +
-                    ': ' + op.durA.toFixed(2) + ' \u2192 ' + op.durB.toFixed(2) + ' ms ' +
-                    '<span class="delta-up">(+' + (op.durB - op.durA).toFixed(2) + ' ms)</span></li>';
-            });
-            diffOpsHtml += '</ul>';
-        }
-        if (diffOps.added.length > 0) {
-            diffOpsHtml += '<h4>Only in B:</h4><ul>';
-            diffOps.added.forEach(function(op) {
-                diffOpsHtml += '<li class="diff-add"><b>' + escapeHtml(op.service) + '</b> / ' + escapeHtml(op.operation) +
-                    ': ' + op.durB.toFixed(2) + ' ms</li>';
-            });
-            diffOpsHtml += '</ul>';
-        }
-        if (diffOps.removed.length > 0) {
-            diffOpsHtml += '<h4>Only in A:</h4><ul>';
-            diffOps.removed.forEach(function(op) {
-                diffOpsHtml += '<li class="diff-remove"><b>' + escapeHtml(op.service) + '</b> / ' + escapeHtml(op.operation) +
-                    ': ' + op.durA.toFixed(2) + ' ms</li>';
-            });
-            diffOpsHtml += '</ul>';
-        }
-        diffOpsHtml += '</div>';
-    }
+
+    var opCompare = buildOperationComparison(a, b, totalA, totalB);
+
     var html = '<div class="compare-grid">' +
         '<div class="compare-col a">' +
         '<h3>Trace A: ' + escapeHtml(origA) + '</h3>' +
@@ -578,12 +782,130 @@ function updateComparison() {
         '<table><tr><th>#</th><th>Service</th><th>Operation</th><th>Duration</th><th>%</th></tr>' + cpBRows + '</table>' +
         '</div>' +
         '</div>' +
-        diffOpsHtml +
+        '<div class="summary-card operation-compare-section">' +
+        '<h3>Operation-Level Comparison</h3>' +
+        opCompare +
+        '</div>' +
         '<div class="summary-card">' +
         '<h3>Service Duration Breakdown</h3>' +
         '<table><tr><th>Service</th><th>Trace A</th><th>Trace B</th><th>Difference</th></tr>' + diffRows + '</table>' +
         '</div>';
-    document.getElementById('compare-results').innerHTML = html;
+    container.innerHTML = html;
+}
+
+function buildOperationComparison(a, b, totalA, totalB) {
+    var obA = a.operation_breakdown || {};
+    var obB = b.operation_breakdown || {};
+    var common = [];
+    var onlyA = [];
+    var onlyB = [];
+    var allKeys = new Set(Object.keys(obA).concat(Object.keys(obB)));
+    allKeys.forEach(function(key) {
+        var inA = obA[key] !== undefined;
+        var inB = obB[key] !== undefined;
+        if (inA && inB) {
+            common.push({
+                key: key,
+                a: obA[key],
+                b: obB[key],
+            });
+        } else if (inA) {
+            onlyA.push({ key: key, a: obA[key] });
+        } else {
+            onlyB.push({ key: key, b: obB[key] });
+        }
+    });
+    common.sort(function(x, y) {
+        return (y.b.total_duration_ms - y.a.total_duration_ms) - (x.b.total_duration_ms - x.a.total_duration_ms);
+    });
+    onlyA.sort(function(x, y) { return y.a.total_duration_ms - x.a.total_duration_ms; });
+    onlyB.sort(function(x, y) { return y.b.total_duration_ms - x.b.total_duration_ms; });
+
+    var html = '';
+    if (common.length > 0) {
+        html += '<h4 class="op-group-title common">Common Operations (present in both)</h4>';
+        html += '<table class="op-compare-table"><tr>' +
+            '<th>Service</th><th>Operation</th>' +
+            '<th>A (ms)</th><th>A %</th><th>A Count</th><th>A Err</th>' +
+            '<th>B (ms)</th><th>B %</th><th>B Count</th><th>B Err</th>' +
+            '<th>Delta (ms)</th><th>Delta %</th>' +
+            '</tr>';
+        common.forEach(function(item) {
+            var aDur = item.a.total_duration_ms;
+            var bDur = item.b.total_duration_ms;
+            var aPct = totalA > 0 ? (aDur / totalA) * 100 : 0;
+            var bPct = totalB > 0 ? (bDur / totalB) * 100 : 0;
+            var delta = bDur - aDur;
+            var pctDelta = bPct - aPct;
+            var rowClass = '';
+            if (Math.abs(delta) > 50) rowClass = delta > 0 ? 'diff-highlight' : 'diff-remove';
+            var deltaClass = delta > 0 ? 'delta-up' : (delta < 0 ? 'delta-down' : '');
+            var pctClass = pctDelta > 0 ? 'delta-up' : (pctDelta < 0 ? 'delta-down' : '');
+            var deltaSign = delta > 0 ? '+' : '';
+            var pctSign = pctDelta > 0 ? '+' : '';
+            var errA = item.a.error_count || 0;
+            var errB = item.b.error_count || 0;
+            html += '<tr class="' + rowClass + '">' +
+                '<td>' + escapeHtml(item.a.service_name) + '</td>' +
+                '<td>' + escapeHtml(item.a.operation_name) + '</td>' +
+                '<td>' + aDur.toFixed(2) + '</td>' +
+                '<td>' + aPct.toFixed(2) + '%</td>' +
+                '<td>' + item.a.count + '</td>' +
+                '<td class="' + (errA > 0 ? 'error-high' : '') + '">' + errA + '</td>' +
+                '<td>' + bDur.toFixed(2) + '</td>' +
+                '<td>' + bPct.toFixed(2) + '%</td>' +
+                '<td>' + item.b.count + '</td>' +
+                '<td class="' + (errB > 0 ? 'error-high' : '') + '">' + errB + '</td>' +
+                '<td class="' + deltaClass + '">' + deltaSign + delta.toFixed(2) + '</td>' +
+                '<td class="' + pctClass + '">' + pctSign + pctDelta.toFixed(2) + '%</td>' +
+                '</tr>';
+        });
+        html += '</table>';
+    }
+    if (onlyA.length > 0) {
+        html += '<h4 class="op-group-title only-a">Only in Trace A (removed in B)</h4>';
+        html += '<table class="op-compare-table"><tr>' +
+            '<th>Service</th><th>Operation</th>' +
+            '<th>A (ms)</th><th>A %</th><th>A Count</th><th>A Err</th>' +
+            '</tr>';
+        onlyA.forEach(function(item) {
+            var aDur = item.a.total_duration_ms;
+            var aPct = totalA > 0 ? (aDur / totalA) * 100 : 0;
+            var errA = item.a.error_count || 0;
+            html += '<tr>' +
+                '<td>' + escapeHtml(item.a.service_name) + '</td>' +
+                '<td>' + escapeHtml(item.a.operation_name) + '</td>' +
+                '<td>' + aDur.toFixed(2) + '</td>' +
+                '<td>' + aPct.toFixed(2) + '%</td>' +
+                '<td>' + item.a.count + '</td>' +
+                '<td class="' + (errA > 0 ? 'error-high' : '') + '">' + errA + '</td>' +
+                '</tr>';
+        });
+        html += '</table>';
+    }
+    if (onlyB.length > 0) {
+        html += '<h4 class="op-group-title only-b">Only in Trace B (added in B)</h4>';
+        html += '<table class="op-compare-table"><tr>' +
+            '<th>Service</th><th>Operation</th>' +
+            '<th>B (ms)</th><th>B %</th><th>B Count</th><th>B Err</th>' +
+            '</tr>';
+        onlyB.forEach(function(item) {
+            var bDur = item.b.total_duration_ms;
+            var bPct = totalB > 0 ? (bDur / totalB) * 100 : 0;
+            var errB = item.b.error_count || 0;
+            html += '<tr>' +
+                '<td>' + escapeHtml(item.b.service_name) + '</td>' +
+                '<td>' + escapeHtml(item.b.operation_name) + '</td>' +
+                '<td>' + bDur.toFixed(2) + '</td>' +
+                '<td>' + bPct.toFixed(2) + '%</td>' +
+                '<td>' + item.b.count + '</td>' +
+                '<td class="' + (errB > 0 ? 'error-high' : '') + '">' + errB + '</td>' +
+                '</tr>';
+        });
+        html += '</table>';
+    }
+    if (!html) html = '<p class="hint-text">No operation data available.</p>';
+    return html;
 }
 
 function renderCriticalPathTable(cp, totalDur) {
@@ -605,44 +927,6 @@ function renderCriticalPathTable(cp, totalDur) {
     return rows;
 }
 
-function findDiffOperations(cpA, cpB) {
-    var result = { added: [], removed: [], slower: [] };
-    var aKeys = {};
-    cpA.forEach(function(s) {
-        var key = (s.service_name || '') + '::' + (s.operation_name || '');
-        aKeys[key] = s;
-    });
-    cpB.forEach(function(s) {
-        var key = (s.service_name || '') + '::' + (s.operation_name || '');
-        if (aKeys[key]) {
-            var diff = s.duration_ms - aKeys[key].duration_ms;
-            if (diff > 50) {
-                result.slower.push({
-                    service: s.service_name,
-                    operation: s.operation_name,
-                    durA: aKeys[key].duration_ms,
-                    durB: s.duration_ms,
-                });
-            }
-            delete aKeys[key];
-        } else {
-            result.added.push({
-                service: s.service_name,
-                operation: s.operation_name,
-                durB: s.duration_ms,
-            });
-        }
-    });
-    for (var key in aKeys) {
-        result.removed.push({
-            service: aKeys[key].service_name,
-            operation: aKeys[key].operation_name,
-            durA: aKeys[key].duration_ms,
-        });
-    }
-    return result;
-}
-
 function setupTopologyClick() {
     var chart = document.getElementById('topology-chart');
     if (!chart || chart._topologySetup) return;
@@ -650,18 +934,28 @@ function setupTopologyClick() {
     chart.on('plotly_click', function(data) {
         if (!data.points || data.points.length === 0) return;
         var pt = data.points[0];
-        var text = pt.text;
-        if (!text) return;
         var detailsEl = document.getElementById('topology-details');
         if (!detailsEl) return;
         if (pt.curveNumber === 2) {
-            var svc = text;
-            showTopologyNodeDetails(svc, detailsEl);
+            var svc = null;
+            if (pt.customdata && pt.customdata.length > 0) {
+                svc = pt.customdata[0];
+            } else if (pt.text) {
+                svc = pt.text;
+            }
+            if (svc !== null) {
+                lastTopologySelection = { type: 'node', service: svc };
+                showTopologyNodeDetails(svc, detailsEl);
+            }
         } else if (pt.curveNumber === 1) {
-            var ht = pt.hovertext || '';
-            var m = ht.match(/<b>([^<]+) \u2192 ([^<]+)<\/b>/);
-            if (m) {
-                showTopologyEdgeDetails(m[1], m[2], detailsEl);
+            var src = null, tgt = null;
+            if (pt.customdata && pt.customdata.length >= 2) {
+                src = pt.customdata[0];
+                tgt = pt.customdata[1];
+            }
+            if (src !== null && tgt !== null) {
+                lastTopologySelection = { type: 'edge', source: src, target: tgt };
+                showTopologyEdgeDetails(src, tgt, detailsEl);
             }
         }
     });
@@ -676,15 +970,30 @@ function renderTraceLinks(traceIds) {
     return links;
 }
 
+function filterTopologyTraces(traceIds) {
+    if (!traceIds) return [];
+    if (filteredTraceIds.length === sortedTraceIds.length) return traceIds;
+    var filteredSet = new Set(filteredTraceIds.map(function(sid) {
+        return safeToOrig[sid] || sid;
+    }));
+    return traceIds.filter(function(tid) { return filteredSet.has(tid); });
+}
+
 function showTopologyNodeDetails(serviceName, el) {
     var data = topologyNodeData[serviceName];
     if (!data) {
         el.innerHTML = '<p>No data for service: ' + escapeHtml(serviceName) + '</p>';
         return;
     }
-    var traceLinks = renderTraceLinks(data.traces || []);
+    var visibleTraces = filterTopologyTraces(data.traces || []);
+    var traceLinks = renderTraceLinks(visibleTraces);
+    var visibleSlowOps = (data.slow_operations || []).filter(function(op) {
+        if (filteredTraceIds.length === sortedTraceIds.length) return true;
+        var safeId = origToSafe[op.trace_id];
+        return safeId && filteredTraceIds.indexOf(safeId) !== -1;
+    }).slice(0, 10);
     var slowRows = '';
-    (data.slow_operations || []).slice(0, 10).forEach(function(op, i) {
+    visibleSlowOps.forEach(function(op, i) {
         var errClass = op.error ? 'error-high' : '';
         slowRows += '<tr>' +
             '<td>' + (i + 1) + '</td>' +
@@ -695,7 +1004,7 @@ function showTopologyNodeDetails(serviceName, el) {
             '</tr>';
     });
     var html = '<h4>Service: ' + escapeHtml(serviceName) + '</h4>' +
-        '<p><b>Related traces (' + (data.trace_count || 0) + '):</b> ' + traceLinks + '</p>';
+        '<p><b>Related traces (' + visibleTraces.length + ' / ' + (data.trace_count || 0) + ' visible):</b> ' + traceLinks + '</p>';
     if (slowRows) {
         html += '<h5>Slow Operations (Top 10, > 500ms):</h5>' +
             '<table><tr><th>#</th><th>Operation</th><th>Duration</th><th>Error</th><th>Trace</th></tr>' + slowRows + '</table>';
@@ -710,9 +1019,15 @@ function showTopologyEdgeDetails(src, tgt, el) {
         el.innerHTML = '<p>No data for edge: ' + escapeHtml(src) + ' \u2192 ' + escapeHtml(tgt) + '</p>';
         return;
     }
-    var traceLinks = renderTraceLinks(data.traces || []);
+    var visibleTraces = filterTopologyTraces(data.traces || []);
+    var traceLinks = renderTraceLinks(visibleTraces);
+    var visibleSlowOps = (data.slow_operations || []).filter(function(op) {
+        if (filteredTraceIds.length === sortedTraceIds.length) return true;
+        var safeId = origToSafe[op.trace_id];
+        return safeId && filteredTraceIds.indexOf(safeId) !== -1;
+    }).slice(0, 10);
     var slowRows = '';
-    (data.slow_operations || []).slice(0, 10).forEach(function(op, i) {
+    visibleSlowOps.forEach(function(op, i) {
         var errClass = op.error ? 'error-high' : '';
         slowRows += '<tr>' +
             '<td>' + (i + 1) + '</td>' +
@@ -723,7 +1038,7 @@ function showTopologyEdgeDetails(src, tgt, el) {
             '</tr>';
     });
     var html = '<h4>Call Edge: ' + escapeHtml(src) + ' \u2192 ' + escapeHtml(tgt) + '</h4>' +
-        '<p><b>Related traces (' + (data.trace_count || 0) + '):</b> ' + traceLinks + '</p>';
+        '<p><b>Related traces (' + visibleTraces.length + ' / ' + (data.trace_count || 0) + ' visible):</b> ' + traceLinks + '</p>';
     if (slowRows) {
         html += '<h5>Slow Operations (Top 10, > 500ms):</h5>' +
             '<table><tr><th>#</th><th>Operation</th><th>Duration</th><th>Error</th><th>Trace</th></tr>' + slowRows + '</table>';
@@ -745,17 +1060,147 @@ function escapeAttr(s) {
     return escapeHtml(s);
 }
 
-window.addEventListener('DOMContentLoaded', function() {
-    if (sortedTraceIds && sortedTraceIds.length > 0) {
-        switchTrace(sortedTraceIds[0]);
-    }
-    var selects = document.querySelectorAll('.trace-selector-bar select');
-    selects.forEach(function(s) {
-        if (s && s.closest) {
-            var c = s.closest('.container');
-            if (c) Plotly.Plots.resize(c);
-        }
+function collectCurrentComparisonData() {
+    var safeA = document.getElementById('compare-a').value;
+    var safeB = document.getElementById('compare-b').value;
+    var a = traceData[safeA];
+    var b = traceData[safeB];
+    if (!a || !b) return null;
+    var result = {
+        trace_a: {
+            trace_id: safeToOrig[safeA] || safeA,
+            total_duration_ms: a.total_duration_ms,
+            critical_duration_ms: a.critical_duration_ms,
+            span_count: a.span_count,
+            error_count: a.error_count,
+            service_breakdown: a.service_breakdown,
+        },
+        trace_b: {
+            trace_id: safeToOrig[safeB] || safeB,
+            total_duration_ms: b.total_duration_ms,
+            critical_duration_ms: b.critical_duration_ms,
+            span_count: b.span_count,
+            error_count: b.error_count,
+            service_breakdown: b.service_breakdown,
+        },
+        service_diff: [],
+        operation_diff: [],
+    };
+    var sbA = a.service_breakdown || {};
+    var sbB = b.service_breakdown || {};
+    var allSvcs = new Set(Object.keys(sbA).concat(Object.keys(sbB)));
+    allSvcs.forEach(function(svc) {
+        var aDur = sbA[svc] || 0;
+        var bDur = sbB[svc] || 0;
+        result.service_diff.push({
+            service: svc,
+            trace_a_ms: aDur,
+            trace_b_ms: bDur,
+            delta_ms: bDur - aDur,
+        });
     });
+    var obA = a.operation_breakdown || {};
+    var obB = b.operation_breakdown || {};
+    var allKeys = new Set(Object.keys(obA).concat(Object.keys(obB)));
+    allKeys.forEach(function(key) {
+        var inA = obA[key] !== undefined;
+        var inB = obB[key] !== undefined;
+        var entry = {};
+        if (inA) {
+            entry.service = obA[key].service_name;
+            entry.operation = obA[key].operation_name;
+            entry.trace_a = {
+                total_ms: obA[key].total_duration_ms,
+                count: obA[key].count,
+                error_count: obA[key].error_count,
+            };
+        }
+        if (inB) {
+            entry.service = obB[key].service_name;
+            entry.operation = obB[key].operation_name;
+            entry.trace_b = {
+                total_ms: obB[key].total_duration_ms,
+                count: obB[key].count,
+                error_count: obB[key].error_count,
+            };
+        }
+        if (inA && inB) {
+            entry.delta_ms = entry.trace_b.total_ms - entry.trace_a.total_ms;
+        }
+        result.operation_diff.push(entry);
+    });
+    return result;
+}
+
+function exportCurrentView() {
+    var exportData = {
+        exported_at: new Date().toISOString(),
+        filters: {
+            service: currentFilters.service,
+            operation: currentFilters.operation,
+            error_only: currentFilters.errorOnly,
+            min_duration_ms: currentFilters.minDuration,
+            max_duration_ms: currentFilters.maxDuration,
+        },
+        visible_traces: filteredTraceIds.map(function(sid) {
+            var orig = safeToOrig[sid] || sid;
+            var meta = traceData[sid] || {};
+            return {
+                trace_id: orig,
+                total_duration_ms: meta.total_duration_ms,
+                critical_duration_ms: meta.critical_duration_ms,
+                span_count: meta.span_count,
+                error_count: meta.error_count,
+                services: meta.services || [],
+            };
+        }),
+        comparison: collectCurrentComparisonData(),
+        topology_selection: null,
+    };
+    if (lastTopologySelection) {
+        if (lastTopologySelection.type === 'node') {
+            var d = topologyNodeData[lastTopologySelection.service];
+            exportData.topology_selection = {
+                type: 'node',
+                service: lastTopologySelection.service,
+                related_traces: d ? filterTopologyTraces(d.traces || []) : [],
+                slow_operations: d ? (d.slow_operations || []).slice(0, 10) : [],
+            };
+        } else if (lastTopologySelection.type === 'edge') {
+            var key = lastTopologySelection.source + ' \u2192 ' + lastTopologySelection.target;
+            var ed = topologyEdgeData[key];
+            exportData.topology_selection = {
+                type: 'edge',
+                source: lastTopologySelection.source,
+                target: lastTopologySelection.target,
+                related_traces: ed ? filterTopologyTraces(ed.traces || []) : [],
+                slow_operations: ed ? (ed.slow_operations || []).slice(0, 10) : [],
+            };
+        }
+    }
+    var blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    var ts = new Date().toISOString().replace(/[:.]/g, '-');
+    a.download = 'trace-analysis-export-' + ts + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+window.addEventListener('DOMContentLoaded', function() {
+    applyFilters();
+    setTimeout(function() {
+        var selects = document.querySelectorAll('.trace-selector-bar select');
+        selects.forEach(function(s) {
+            if (s && s.closest) {
+                var c = s.closest('.container');
+                if (c) Plotly.Plots.resize(c);
+            }
+        });
+    }, 200);
 });
 </script>"""
 

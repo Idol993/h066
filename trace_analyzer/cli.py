@@ -273,16 +273,35 @@ def visualize(ctx, input_file, format_name, output, service, max_traces):
                     "pct_of_critical_path": s.get("pct_of_critical_path"),
                 })
             service_breakdown = {}
+            operation_breakdown = {}
             error_count = 0
+            has_errors = False
+            services_set = set()
             min_ts = None
             max_ts = None
             for s in trace_spans:
                 svc = s.get("service_name", "unknown")
-                service_breakdown[svc] = service_breakdown.get(svc, 0) + s.get("duration_ms", 0)
-                if s.get("error", False):
-                    error_count += 1
-                ts = s.get("timestamp_ms", 0)
+                op = s.get("operation_name", "unknown")
                 dur = s.get("duration_ms", 0)
+                is_err = s.get("error", False)
+                services_set.add(svc)
+                service_breakdown[svc] = service_breakdown.get(svc, 0) + dur
+                op_key = f"{svc}::{op}"
+                if op_key not in operation_breakdown:
+                    operation_breakdown[op_key] = {
+                        "service_name": svc,
+                        "operation_name": op,
+                        "count": 0,
+                        "total_duration_ms": 0.0,
+                        "error_count": 0,
+                    }
+                operation_breakdown[op_key]["count"] += 1
+                operation_breakdown[op_key]["total_duration_ms"] += dur
+                if is_err:
+                    operation_breakdown[op_key]["error_count"] += 1
+                    error_count += 1
+                    has_errors = True
+                ts = s.get("timestamp_ms", 0)
                 if min_ts is None or ts < min_ts:
                     min_ts = ts
                 end_ts = ts + dur
@@ -297,7 +316,10 @@ def visualize(ctx, input_file, format_name, output, service, max_traces):
                 "total_duration_ms": total_duration_ms,
                 "span_count": len(trace_spans),
                 "error_count": error_count,
+                "has_errors": has_errors,
+                "services": sorted(services_set),
                 "service_breakdown": service_breakdown,
+                "operation_breakdown": operation_breakdown,
             }
         overview_fig = flame.generate(spans)
         summary = {
